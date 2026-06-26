@@ -34,6 +34,8 @@ Next.js on Vercel + Supabase (Postgres, Auth, Realtime). Single-tenant in v1.
 
 - [`docs/design.md`](docs/design.md) — the full design + the decisions behind it
   (reviewed for scope, design, and engineering).
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — the living decision log: every design
+  decision and its rationale, kept current as the project evolves.
 - [`docs/test-plan.md`](docs/test-plan.md) — what to test and where.
 - [`docs/design-superseded-observatory.md`](docs/design-superseded-observatory.md) — the
   earlier passive-observatory design, kept for context (superseded).
