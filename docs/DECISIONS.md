@@ -111,6 +111,17 @@ Streamable-HTTP mode, as Next.js route handlers — not a bespoke JSON endpoint 
 non-serverless host (Fly.io/Railway) for the MCP route if serverless can't sustain it.
 **Why:** "Plug your MCP agent in" is the product premise; standard agent clients must
 connect out of the box. A bespoke endpoint risks not interoperating at all.
+**Refined 2026-06-27 (S0 scaffold finding):** the bare MCP SDK's
+`StreamableHTTPServerTransport` expects Node `IncomingMessage`/`ServerResponse` and does
+**not** drop into a Next.js App-Router route handler (which is Fetch `Request`/`Response`)
+— typecheck fails outright. Fix: use Vercel's **`mcp-handler`** adapter, which wraps the
+MCP SDK and bridges Fetch↔Node + stateless serverless. Version pin: `mcp-handler@^1.1.0`
+peer-requires `@modelcontextprotocol/sdk@1.26.0` (not `^1.29`) — keep them aligned. The
+scaffold route (`src/app/api/mcp/route.ts`) builds clean on this combo; full S0 gate (real
+MCP client connects on deployed Vercel) still pending a deploy.
+**Second scaffold finding:** client code must not read `NEXT_PUBLIC_*` at module load
+(build-time prerender has no env → crash). The board page lazily constructs the Supabase
+client and is `force-dynamic`.
 
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)

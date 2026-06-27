@@ -4,8 +4,22 @@
 live, and step in when an agent stalls — agent-native over
 [MCP](https://modelcontextprotocol.io), open-source, self-hostable.
 
-> **Status:** Pre-implementation. This repo currently holds the design and review
-> documents only. No application code yet.
+> **Status:** S0 scaffold. A minimal Next.js app exists to run the two S0 de-risking
+> gates (MCP-on-Vercel handshake + Realtime-RLS live delivery) — not the product yet.
+> Feature work (S1+) begins only after both gates pass. See
+> [`docs/DECISIONS.md`](docs/DECISIONS.md).
+
+## Run the S0 scaffold
+
+```bash
+npm install
+cp .env.example .env.local   # fill in Supabase URL + keys
+npm run dev
+```
+
+You'll need a **Supabase project** (run `supabase/migrations/0001_s0_tasks.sql`) and, for
+the full Gate A, a **Vercel deployment**. The MCP endpoint is `POST /api/mcp` (bearer
+`AGENT_SPIKE_TOKEN`); the live board is `/`.
 
 ## Why not just use JIRA or Notion?
 
