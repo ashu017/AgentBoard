@@ -247,6 +247,20 @@ AI-slop blacklist.
 **Why:** "Build a Kanban board" defaults to generic AI-slop; naming the system gives the
 tool identity and makes status color carry meaning.
 
+**Visual reference (noted 2026-06-27, decide later):** a Figma Make "operator console"
+task dashboard —
+https://www.figma.com/make/9DyXcOrZRgAlDQvODiot2K/Personal-tasks-dashboard — is a strong
+candidate base. It's React + Tailwind v4 + shadcn/ui in a terminal/operator aesthetic that
+matches 4A well: monospace throughout, `SYS::`/`LIVE` system bar, stat chips, completion
+bar, cut-corner clip-path cards. Palette is warm (paper `#f0ece6`, orange `#e84500`,
+accent/destructive `#cc0055`, blue `#0088cc`) on a grid background — a committed direction,
+though cooler/darker is also open. **Not yet adopted.** If adopted, required adaptations:
+add a 4th **Failed** column (loudest), replace personal-task fields (priority/dueDate/tags)
+with **agent fields** (assigned agent + mono key-prefix, last-seen, result/error excerpt),
+make the board **read-only for status** (agents drive it via MCP), and apply the
+Failed-loud / Done-quiet hierarchy (1A-UI). The Agents screen + key-reveal don't exist in
+the reference and would be new.
+
 ### 6A — Desktop-first responsive + a11y baseline
 **Status:** Active · 2026-06-26
 Design for laptop/monitor; board scrolls horizontally and stays usable down to tablet, no
