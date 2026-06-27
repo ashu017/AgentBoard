@@ -29,6 +29,49 @@ just report, human watches). The observatory design is preserved in
 what's done/stuck/failed. The active-coordinator framing is the stronger, more
 differentiated product.
 
+### POSITION — Differentiation, wedge, and moat strategy
+**Status:** Active · 2026-06-27
+**The product is not a task board. It is the human-in-the-loop control plane for a fleet
+of AI agents.** The board is the human's window into it, not the thing itself. One-line
+positioning: *assign work to a fleet, watch it live, intervene when an agent stalls —
+agent-native over MCP, open-source, self-hostable.*
+
+**Why a board alone loses:** "tasks in columns" is a solved problem; Notion/JIRA win on it
+and always will. "Agents hit an API to update tasks" is also not novel — JIRA has had a
+REST API for years. If our answer to "why not JIRA?" is "we have a board and an API," we
+have no answer.
+
+**Why JIRA/Notion genuinely can't do this well (the wedge):** their assignee model assumes
+a *human*.
+1. **Agents aren't users.** Assigning work to an agent in JIRA means a license seat + a
+   human-shaped account + a permissions model built for people. 30 agents = 30 seats + an
+   IT conversation. No concept of a cheap, revocable, per-agent machine credential.
+2. **Human-native interface, not machine-native.** JIRA = OAuth + REST + ticket-field
+   semantics an agent must be taught, re-integrated each time. Agents speak **MCP** —
+   discover tools, call them natively. Onboarding is "paste this config."
+3. **No agent liveness.** A project tracker can't tell you "this assignee is a program that
+   went silent 4 minutes ago mid-task." Our board is built around working/stuck/dead-now.
+4. **Optimized for the wrong reader.** JIRA boards optimize for human sprint collaboration;
+   ours optimizes for a 3-second "what broke?" scan of a running fleet.
+
+**Honest limit — the wedge is a head start, not yet a moat.** JIRA could ship an MCP
+server next quarter. "JIRA but agents connect over MCP" is copyable. The real moat must
+come from things incumbents won't or can't easily do, and is where the roadmap points:
+- **Agent-shaped primitives, not human-shaped ones:** tasks carry the agent's actual
+  artifacts (result payload, tool-call trace, token cost, retries) and structured results
+  — not a free-text comment a human reads. JIRA's data model fights this; ours is built
+  for it.
+- **The control loop, not just the board:** routing work to a fleet, pull/claim,
+  load-balancing, retry-on-failure, and escalation to a human when an agent is stuck — an
+  orchestration layer with a human in it, distinct from a project tracker.
+- **Open-source + self-host + MCP-native** positioning that a seats-and-cloud-lock-in
+  incumbent structurally won't match.
+
+**What this changes:** the MVP loop is unchanged; what we *emphasize* (agent-native control
+plane, not "task board") and what we build *next* (approvals, results-as-artifacts,
+liveness/escalation — not more board polish) both point at the moat. See the
+"Open / unvalidated risks" section for the differentiation risk this is still exposed to.
+
 ### MODE — Scope reduction to one loop
 **Status:** Active · 2026-06-26
 The MVP is cut to the thinnest slice that proves one end-to-end loop (login → create →
@@ -232,3 +275,9 @@ runaway-agent write pressure for now).
   proxy). The hardest user step; the MCP spike should confirm at least one target client.
 - **Demand:** "managers want to hand-assign tasks to agents on a board" is the core bet,
   still unproven. Worth a rough demo in front of a few agent-runners before heavy build.
+- **Moat durability (see POSITION):** the agent-native/MCP wedge is a head start, not yet
+  defensible — an incumbent could ship an MCP server and copy it. The bet is that
+  agent-shaped primitives + the control loop + OSS/self-host positioning compound into a
+  moat incumbents won't match. Unproven; the roadmap (approvals, results-as-artifacts,
+  liveness/escalation) is what tests it. If those don't differentiate in practice, revisit
+  whether this should be a standalone product vs. an MCP layer on an existing tracker.

@@ -1,11 +1,30 @@
 # AgentBoard
 
-A web app where a human manager assigns tasks to their AI agents and watches the work
-happen live — and the agents read and update those tasks programmatically over
-[MCP](https://modelcontextprotocol.io).
+**The human-in-the-loop control plane for a fleet of AI agents.** Assign work, watch it
+live, and step in when an agent stalls — agent-native over
+[MCP](https://modelcontextprotocol.io), open-source, self-hostable.
 
 > **Status:** Pre-implementation. This repo currently holds the design and review
 > documents only. No application code yet.
+
+## Why not just use JIRA or Notion?
+
+Because their assignee model assumes a **human**. AgentBoard is built for machines as
+first-class workers:
+
+- **Agents aren't users.** No license seat, no human-shaped account per agent — just a
+  cheap, revocable, per-agent machine credential. Run 30 agents without an IT conversation.
+- **Machine-native interface.** Agents speak MCP — they discover and call tools directly.
+  Wiring an agent in is "paste this config," not a bespoke REST integration each time.
+- **Agent liveness.** The board knows the difference between "working," "stuck," and
+  "went silent mid-task" — a project tracker built for humans can't.
+- **Built for the right reader.** The board optimizes for a 3-second "what broke?" scan of
+  a running fleet, not human sprint collaboration.
+
+A board is the *window* into the control plane, not the product. The product is the
+control loop with a human in it. See
+[`docs/DECISIONS.md`](docs/DECISIONS.md) → **POSITION** for the full wedge, the moat
+strategy, and the honest risks.
 
 ## The core loop
 
@@ -17,14 +36,20 @@ Manager logs in → creates a task → assigns it to a specific agent
 
 Everything in the MVP exists to prove that loop end to end.
 
-## What it is
+## What the MVP is
 
-- **Human side:** a live Kanban board (Todo / In Progress / Done / Failed), an agents
-  screen to onboard agents and issue per-agent API keys, and a create-and-assign-task
-  flow.
+The MVP proves one end-to-end loop on top of that wedge:
+
+- **Human side:** a live board (Todo / In Progress / Done / Failed) optimized for a fleet
+  scan, an agents screen to onboard agents and issue per-agent API keys, and a
+  create-and-assign-task flow.
 - **Agent side:** an MCP server exposing three tools — `list_my_tasks`,
-  `update_task_status`, `submit_result` — so standard agent clients can connect with a
+  `update_task_status`, `submit_result` — so standard agent clients connect with a
   per-agent API key and act on their assigned work.
+
+Where it goes next (the moat, not more board features): results-as-artifacts (tool
+traces, cost, retries — not free-text comments), human approval gates, and
+liveness-driven escalation when an agent stalls.
 
 ## Stack
 
