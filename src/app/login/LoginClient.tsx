@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
 import { Modal } from "@/app/_components/Modal";
-import { devLogin } from "./actions";
+import { devLogin, signInWithGitHub } from "./actions";
 
 // Sign-in presented as a modal over the operator-console backdrop (matches the
 // Figma reference's modal pattern). The modal is open by default on /login and
 // non-dismissable (closing just reopens) — there's nothing behind it to use.
-export function LoginClient({ devEnabled }: { devEnabled: boolean }) {
+export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; oauthError?: boolean }) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -28,15 +28,19 @@ export function LoginClient({ devEnabled }: { devEnabled: boolean }) {
           The human-in-the-loop control plane for a fleet of AI agents.
         </p>
 
+        {oauthError && (
+          <p className="mt-3 text-sm text-magenta">Sign-in failed. Please try again.</p>
+        )}
+
         <div className="mt-5 space-y-3">
-          <button
-            disabled
-            className="w-full cursor-not-allowed border border-line px-4 py-2.5 text-sm text-ink-soft opacity-60"
-            title="Configured in Phase 3b"
-          >
-            Continue with GitHub
-            <span className="mono ml-2 text-[10px] uppercase">soon</span>
-          </button>
+          <form action={signInWithGitHub}>
+            <button
+              type="submit"
+              className="w-full border border-ink bg-ink px-4 py-2.5 text-sm font-medium text-paper hover:opacity-90"
+            >
+              Continue with GitHub
+            </button>
+          </form>
 
           {devEnabled && (
             <form action={devLogin}>

@@ -5,7 +5,12 @@ import { LoginClient } from "./LoginClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   if (await getCurrentUser()) redirect("/");
-  return <LoginClient devEnabled={devLoginEnabled()} />;
+  const { error } = await searchParams;
+  return <LoginClient devEnabled={devLoginEnabled()} oauthError={error === "oauth"} />;
 }

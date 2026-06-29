@@ -3,6 +3,19 @@ import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { createAdminClient } from "@/lib/supabase-admin";
 
+// Start GitHub OAuth: ask Supabase for the provider authorize URL (with our
+// /auth/callback as the return), then redirect the browser to GitHub.
+export async function signInWithGitHub(): Promise<void> {
+  const supabase = await createServerSupabase();
+  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? "";
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: { redirectTo: `${origin}/auth/callback` },
+  });
+  if (error || !data.url) throw new Error(`GitHub sign-in failed: ${error?.message ?? "no url"}`);
+  redirect(data.url);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DEV-ONLY login. Lets us exercise the full board against the live DB before
 // GitHub OAuth is wired (Phase 3b). Hard-gated on DEV_LOGIN=1 — it must never be
