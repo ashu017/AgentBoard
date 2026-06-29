@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import {
   createAgent as _createAgent,
   revokeAgent as _revokeAgent,
+  deleteAgent as _deleteAgent,
   createTask as _createTask,
   type CreatedAgent,
 } from "@/lib/manager-actions";
@@ -43,6 +44,20 @@ export async function revokeAgentAction(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to revoke" };
+  }
+}
+
+export async function deleteAgentAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await _deleteAgent(String(formData.get("agentId") ?? ""));
+    revalidatePath("/agents");
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete" };
   }
 }
 

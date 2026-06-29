@@ -57,6 +57,36 @@ export async function revokeAgent(agentId: string): Promise<void> {
   if (error) throw new Error(`revoke failed: ${error.message}`);
 }
 
+/**
+ * Delete an agent — ONLY if no task references it (tasks.assigned_agent_id is
+ * `on delete restrict`, so the DB would reject a delete otherwise). For cleaning
+ * up a mistakenly-created agent. Once an agent has done work, use revoke instead
+ * (preserves the audit trail). Throws if the agent has any tasks.
+ */
+export async function deleteAgent(agentId: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  const supabase = await createServerSupabase();
+
+  // Guard: refuse if any task references this agent (also enforced by the FK).
+  const { count, error: countErr } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("workspace_id", session.workspace.id)
+    .eq("assigned_agent_id", agentId);
+  if (countErr) throw new Error(`delete precheck failed: ${countErr.message}`);
+  if ((count ?? 0) > 0) {
+    throw new Error("This agent has tasks — revoke it instead of deleting.");
+  }
+
+  const { error } = await supabase
+    .from("agents")
+    .delete()
+    .eq("id", agentId)
+    .eq("workspace_id", session.workspace.id);
+  if (error) throw new Error(`delete failed: ${error.message}`);
+}
+
 export interface CreatedTask {
   id: string;
   title: string;

@@ -80,11 +80,11 @@ export function BoardClient({
           )}
           <span className="text-ink-soft">{counts.in_progress} in progress · {counts.in_review} in review · {counts.done} done</span>
         </div>
+        {/* Always active; with no agents the modal explains (wittily) instead of
+            offering a form with nobody to assign to. */}
         <button
-          onClick={() => setShowNew((v) => !v)}
-          disabled={noAgents}
-          title={noAgents ? "Add an agent first" : undefined}
-          className="bg-orange px-3 py-1.5 text-sm font-medium text-paper disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => setShowNew(true)}
+          className="bg-orange px-3 py-1.5 text-sm font-medium text-paper"
         >
           New task
         </button>
@@ -102,8 +102,36 @@ export function BoardClient({
       {/* Add-agent flow opens in place on the board (no navigation). */}
       {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAddAgent(false)} />}
 
-      <Modal open={showNew && !noAgents} onClose={() => setShowNew(false)} title="New task" systemTag="SYS:: ASSIGN">
-        <NewTaskPanel agents={agents} onDone={() => setShowNew(false)} />
+      <Modal
+        open={showNew}
+        onClose={() => setShowNew(false)}
+        title={noAgents ? "No agents on duty" : "New task"}
+        systemTag={noAgents ? "SYS:: NOBODY HOME" : "SYS:: ASSIGN"}
+      >
+        {noAgents ? (
+          <div>
+            <p className="text-sm text-ink">
+              A task with no one to do it is just a wish. Your fleet is empty — hire an agent
+              before handing out work.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => {
+                  setShowNew(false);
+                  setAddAgent(true);
+                }}
+                className="bg-orange px-4 py-2 text-sm font-medium text-paper"
+              >
+                Add an agent
+              </button>
+              <button onClick={() => setShowNew(false)} className="border border-line px-4 py-2 text-sm">
+                Not now
+              </button>
+            </div>
+          </div>
+        ) : (
+          <NewTaskPanel agents={agents} onDone={() => setShowNew(false)} />
+        )}
       </Modal>
 
       {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 tasks.</p>}

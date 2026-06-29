@@ -33,6 +33,31 @@ d("agent-db (live DB)", () => {
     if (B) await teardownTenant(B);
   });
 
+  // Agent delete guard (manager action) — relies on the FK on delete restrict
+  // and an app-level task-count precheck. Asserts the DB-level invariant the
+  // deleteAgent() guard depends on: an agent with tasks cannot be deleted, one
+  // without can.
+  describe("delete-agent guard (FK on delete restrict)", () => {
+    it("deleting an agent WITH a task is rejected by the DB", async () => {
+      const { admin } = await import("./helpers");
+      const t = await seedTenant(generateApiKey(), "del-has-task");
+      await seedTask(t, { title: "blocks delete", status: "todo" });
+      const { error } = await admin().from("agents").delete().eq("id", t.agentId);
+      expect(error).not.toBeNull(); // FK on delete restrict
+      await teardownTenant(t);
+    });
+
+    it("deleting an agent with NO tasks succeeds", async () => {
+      const { admin } = await import("./helpers");
+      const t = await seedTenant(generateApiKey(), "del-no-task");
+      const { error } = await admin().from("agents").delete().eq("id", t.agentId);
+      expect(error).toBeNull();
+      const { data } = await admin().from("agents").select("id").eq("id", t.agentId);
+      expect(data).toHaveLength(0);
+      await teardownTenant(t);
+    });
+  });
+
   describe("resolveAgentByKey", () => {
     it("resolves a valid key to its (agentId, workspaceId)", async () => {
       const ctx = await agentDb.resolveAgentByKey(A.token);

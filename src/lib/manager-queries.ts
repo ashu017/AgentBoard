@@ -13,6 +13,8 @@ export interface AgentRow {
   revoked_at: string | null;
   last_seen_at: string | null;
   created_at: string;
+  /** Number of tasks assigned to this agent — gates delete (0 = deletable). */
+  task_count: number;
 }
 
 export interface BoardTask {
@@ -30,12 +32,16 @@ export const BOARD_TASK_LIMIT = 200;
 
 export async function listAgents(): Promise<AgentRow[]> {
   const supabase = await createServerSupabase();
+  // tasks(count) is the embedded aggregate over the FK tasks.assigned_agent_id.
   const { data, error } = await supabase
     .from("agents")
-    .select("id, name, description, api_key_prefix, revoked_at, last_seen_at, created_at")
+    .select("id, name, description, api_key_prefix, revoked_at, last_seen_at, created_at, tasks(count)")
     .order("created_at", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []) as AgentRow[];
+  return (data ?? []).map((a) => {
+    const { tasks, ...rest } = a as typeof a & { tasks?: { count: number }[] };
+    return { ...rest, task_count: tasks?.[0]?.count ?? 0 } as AgentRow;
+  });
 }
 
 export async function listBoardTasks(): Promise<{ tasks: BoardTask[]; capped: boolean }> {

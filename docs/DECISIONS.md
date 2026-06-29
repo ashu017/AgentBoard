@@ -303,6 +303,27 @@ snapshots, doesn't keep page JS running); Gate B already PROVED Realtime deliver
 level (D9-RT) and a reload confirms persistence. A Playwright E2E will assert the no-reload
 move in Phase 4.
 
+### S1-P3b — Agent delete (guarded) + always-active New-task
+**Status:** Active · 2026-06-30
+Two UI/behavior refinements on top of S1-P3, both deliberate:
+- **Delete an agent ONLY when it has zero tasks** (`deleteAgent` in
+  manager-actions; `deleteAgentAction`). The roster shows **Delete** for
+  task-free agents and **Revoke** for agents with history. Rationale: revoke
+  (set `revoked_at`, next MCP call → 401) preserves the audit trail and is
+  required because `tasks.assigned_agent_id` is `on delete restrict` — a hard
+  delete of an agent with tasks fails at the DB. Delete is purely for cleaning up
+  a mistakenly-created agent. App-level precheck on `task_count` + the FK are both
+  in play; an integration test asserts the DB rejects deleting an agent with a
+  task and allows one without. `listAgents` now returns `task_count` via the
+  embedded `tasks(count)` aggregate to drive the Delete/Revoke choice.
+- **"New task" is always active.** Previously disabled when no agents existed;
+  now it always opens the modal, and with an empty fleet the modal shows a witty
+  "No agents on duty" message ("A task with no one to do it is just a wish…") with
+  an "Add an agent" shortcut, instead of a dead button or an assignee-less form.
+**Why:** keeps D12 revoke semantics intact (revoke ≠ delete) while allowing
+cleanup of empty agents; and a disabled primary action with no explanation is
+worse UX than an always-live button that explains itself.
+
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
 A new user's single workspace is created by an idempotent app-code `getOrCreateWorkspace()`

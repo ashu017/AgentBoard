@@ -1,7 +1,7 @@
 "use client";
 import { useActionState, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { revokeAgentAction, type ActionResult } from "@/app/actions";
+import { revokeAgentAction, deleteAgentAction, type ActionResult } from "@/app/actions";
 import type { AgentRow } from "@/lib/manager-queries";
 import { AddAgentFlow } from "@/app/_components/AddAgentFlow";
 
@@ -58,8 +58,14 @@ function AgentRowView({ agent }: { agent: AgentRow }) {
     revokeAgentAction,
     null
   );
+  const [deleteState, deleteFormAction, deleting] = useActionState<ActionResult | null, FormData>(
+    deleteAgentAction,
+    null
+  );
   const revoked = Boolean(agent.revoked_at);
   const connected = Boolean(agent.last_seen_at);
+  // No tasks reference this agent → it can be cleanly deleted (vs revoked).
+  const deletable = agent.task_count === 0;
 
   return (
     <div
@@ -84,20 +90,40 @@ function AgentRowView({ agent }: { agent: AgentRow }) {
           </div>
         </div>
       </div>
-      {!revoked && (
-        <form action={revokeFormAction}>
-          <input type="hidden" name="agentId" value={agent.id} />
-          <button
-            disabled={revoking}
-            className="border border-line px-3 py-1.5 text-xs text-magenta hover:bg-paper disabled:opacity-60"
-          >
-            {revoking ? "Revoking…" : "Revoke"}
-          </button>
-          {revokeState && !revokeState.ok && (
-            <span className="ml-2 text-xs text-magenta">{revokeState.error}</span>
-          )}
-        </form>
-      )}
+      <div className="flex items-center gap-2">
+        {deletable ? (
+          // Clean delete — no task history to preserve.
+          <form action={deleteFormAction}>
+            <input type="hidden" name="agentId" value={agent.id} />
+            <button
+              disabled={deleting}
+              className="border border-line px-3 py-1.5 text-xs text-magenta hover:bg-paper disabled:opacity-60"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+            {deleteState && !deleteState.ok && (
+              <span className="ml-2 text-xs text-magenta">{deleteState.error}</span>
+            )}
+          </form>
+        ) : (
+          !revoked && (
+            // Has tasks → revoke (keeps the audit trail) instead of delete.
+            <form action={revokeFormAction}>
+              <input type="hidden" name="agentId" value={agent.id} />
+              <button
+                disabled={revoking}
+                title="This agent has tasks; revoking disables it while keeping its history."
+                className="border border-line px-3 py-1.5 text-xs text-magenta hover:bg-paper disabled:opacity-60"
+              >
+                {revoking ? "Revoking…" : "Revoke"}
+              </button>
+              {revokeState && !revokeState.ok && (
+                <span className="ml-2 text-xs text-magenta">{revokeState.error}</span>
+              )}
+            </form>
+          )
+        )}
+      </div>
     </div>
   );
 }
