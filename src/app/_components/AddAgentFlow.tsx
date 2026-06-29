@@ -40,13 +40,15 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
         </form>
       </Modal>
 
-      {/* Step 2 — the integration (shown-once key + MCP config) */}
+      {/* Step 2 — the integration (shown-once key + MCP config). Wider panel:
+          the MCP config is the content the user actually copies. */}
       <Modal
         open={step === "key"}
         onClose={onClose}
         title={created ? `Key for ${created.name}` : "Key"}
         systemTag="SYS:: KEY — SHOWN ONCE"
         closeOnBackdrop={false}
+        size="lg"
       >
         {created && <KeyReveal agent={created} mcpEndpoint={mcpEndpoint} onDone={onClose} />}
       </Modal>
@@ -87,8 +89,8 @@ function KeyReveal({
         </button>
       </div>
 
-      <div className="mono mt-3 text-[11px] uppercase tracking-widest text-ink-soft">MCP config</div>
-      <pre className="mono mt-1 overflow-x-auto border border-line bg-paper p-3 text-[11px] leading-relaxed">
+      <div className="mono mt-4 text-[11px] uppercase tracking-widest text-ink-soft">MCP config</div>
+      <pre className="mono mt-1 max-h-72 overflow-auto border border-line bg-paper p-4 text-[12px] leading-relaxed">
         {snippet}
       </pre>
 

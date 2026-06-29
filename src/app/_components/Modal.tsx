@@ -12,6 +12,7 @@ export function Modal({
   children,
   closeOnBackdrop = true,
   hideClose = false,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
@@ -21,6 +22,8 @@ export function Modal({
   closeOnBackdrop?: boolean;
   /** Hide the ✕ and ignore Esc — for required dialogs (e.g. sign-in). */
   hideClose?: boolean;
+  /** Panel width. "lg" for content-heavy dialogs (e.g. the key + MCP config). */
+  size?: "md" | "lg";
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -88,7 +91,9 @@ export function Modal({
       {/* Panel */}
       <div
         ref={panelRef}
-        className="clip-corner relative w-full max-w-md border border-line bg-paper-2 p-6 shadow-xl"
+        className={`clip-corner relative w-full border border-line bg-paper-2 p-6 shadow-xl ${
+          size === "lg" ? "max-w-2xl" : "max-w-md"
+        }`}
       >
         <div className="flex items-start justify-between">
           <div>
