@@ -208,6 +208,33 @@ S0 is fully cleared** and feature work (S1) is unblocked. Artifact left in repo:
 `scripts/gate-a-deployed-full.mjs` (full end-to-end driver: handshake → tools/list → call →
 DB read-back → cleanup); the earlier `scripts/gate-a-deployed.mjs` remains as the minimal driver.
 
+### S1-P1 — Phase 1 foundation built (status module + schema + RLS)
+**Status:** Active · 2026-06-29
+First S1 implementation phase landed: the shared status module, the real v1 schema, and
+human-plane RLS — backend only, no UI/auth yet.
+- **`src/lib/task-status.ts`** is the single source of truth (CLAUDE.md convention):
+  `STATUSES` (5, incl. `in_review`), `isStatus`/`isTerminal`/`canTransition`/
+  `allowedTransitions`/`INITIAL_STATUS`. Per D-STATUS, `in_review` is reachable
+  (`in_progress→in_review`) but has **no legal outgoing transition** — that's Level B
+  (deferred). 34-case exhaustive matrix test in `task-status.test.ts`.
+- **Migration `0003_s1_schema.sql`** drops the S0 spike `tasks` table (empty; design.md
+  said the spike schema is not the v1 schema) and creates `workspaces`/`agents`/`tasks`/
+  `task_events` per design.md "Data model (MVP)", with D6-INDEX composite indexes, the
+  status CHECK mirroring `STATUSES`, and `tasks` re-added to the `supabase_realtime`
+  publication. Applied to the live DB; security advisors clean for these tables.
+- **Human-plane RLS now** (DECISIONS D13/D15): one `*_owner_all` policy per table, visible
+  iff the workspace's `owner_user_id = auth.uid()`. **No agent-plane policies** — the agent
+  path uses service-role + app-code scoping (deferred DB RLS = Appendix A). The `tasks`
+  policy is the one the live board depends on (D9-RT).
+- **Testing:** Vitest installed (`npm test`); `tests/schema-status-check.test.ts` asserts
+  every status CHECK in the migration equals `STATUSES` (drift guard). 36 tests green.
+- **Pre-existing advisor note (not mine):** a `public.rls_auto_enable()` SECURITY DEFINER
+  function (predates these migrations) triggers two security WARNs — left untouched, flagged
+  for later review.
+**Next phases:** agent MCP plane (`lib/agent-db.ts` scoped wrapper + 3 tools + key
+gen/hash + cross-tenant test), then auth/session layer + `getOrCreateWorkspace` (D2), then
+the 3 UI screens, then E2E.
+
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
 A new user's single workspace is created by an idempotent app-code `getOrCreateWorkspace()`
