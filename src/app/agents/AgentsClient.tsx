@@ -1,10 +1,9 @@
 "use client";
 import { useActionState, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createAgentAction, revokeAgentAction, type ActionResult } from "@/app/actions";
-import type { CreatedAgent } from "@/lib/manager-actions";
+import { revokeAgentAction, type ActionResult } from "@/app/actions";
 import type { AgentRow } from "@/lib/manager-queries";
-import { Modal } from "@/app/_components/Modal";
+import { AddAgentFlow } from "@/app/_components/AddAgentFlow";
 
 function relativeTime(iso: string | null): string {
   if (!iso) return "never";
@@ -16,15 +15,9 @@ function relativeTime(iso: string | null): string {
 }
 
 export function AgentsClient({ agents, mcpEndpoint }: { agents: AgentRow[]; mcpEndpoint: string }) {
-  // Board's "Add your first agent" CTA links to /agents?new=1 — auto-open then.
+  // The board CTA can deep-link here with ?new=1 to open the flow immediately.
   const params = useSearchParams();
-  const [open, setOpen] = useState(params.get("new") === "1");
-
-  const [createState, createFormAction, creating] = useActionState<ActionResult<CreatedAgent> | null, FormData>(
-    createAgentAction,
-    null
-  );
-  const created = createState?.ok ? createState.data : undefined;
+  const [adding, setAdding] = useState(params.get("new") === "1");
 
   return (
     <main className="mx-auto max-w-4xl p-6">
@@ -36,54 +29,25 @@ export function AgentsClient({ agents, mcpEndpoint }: { agents: AgentRow[]; mcpE
             the connected dot flip when its first call lands.
           </p>
         </div>
-        <button onClick={() => setOpen(true)} className="shrink-0 bg-orange px-4 py-2 text-sm font-medium text-paper">
+        <button onClick={() => setAdding(true)} className="shrink-0 bg-orange px-4 py-2 text-sm font-medium text-paper">
           Add agent
         </button>
       </div>
 
-      {/* Create-agent modal. On success it swaps to the shown-once key panel so
-          the key is never lost; dismissing it closes the modal. */}
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={created ? `Key for ${created.name}` : "Add agent"}
-        systemTag={created ? "SYS:: KEY — SHOWN ONCE" : "SYS:: NEW AGENT"}
-        closeOnBackdrop={!created} // don't let a stray backdrop click drop the key
-      >
-        {created ? (
-          <KeyReveal agent={created} mcpEndpoint={mcpEndpoint} onDone={() => setOpen(false)} />
-        ) : (
-          <form action={createFormAction}>
-            <div className="grid gap-3">
-              <input name="name" required placeholder="Agent name" className="border border-line bg-paper px-3 py-2 text-sm" />
-              <input name="description" placeholder="Description (optional)" className="border border-line bg-paper px-3 py-2 text-sm" />
-            </div>
-            {createState && !createState.ok && <p className="mt-2 text-sm text-magenta">{createState.error}</p>}
-            <div className="mt-4 flex gap-2">
-              <button type="submit" disabled={creating} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
-                {creating ? "Creating…" : "Create agent"}
-              </button>
-              <button type="button" onClick={() => setOpen(false)} className="border border-line px-4 py-2 text-sm">
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      {adding && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAdding(false)} />}
 
-      {/* Roster */}
+      {/* Roster of onboarded agents */}
       <div className="mt-6 space-y-2">
-        {agents.length === 0 && (
+        {agents.length === 0 ? (
           <div className="clip-corner border border-dashed border-line p-8 text-center">
             <p className="text-sm text-ink-soft">No agents yet — add your first to start assigning work.</p>
-            <button onClick={() => setOpen(true)} className="mono mt-2 text-sm text-orange">
+            <button onClick={() => setAdding(true)} className="mono mt-2 text-sm text-orange">
               → Add your first agent
             </button>
           </div>
+        ) : (
+          agents.map((a) => <AgentRowView key={a.id} agent={a} />)
         )}
-        {agents.map((a) => (
-          <AgentRowView key={a.id} agent={a} />
-        ))}
       </div>
     </main>
   );
@@ -134,51 +98,6 @@ function AgentRowView({ agent }: { agent: AgentRow }) {
           )}
         </form>
       )}
-    </div>
-  );
-}
-
-function KeyReveal({
-  agent,
-  mcpEndpoint,
-  onDone,
-}: {
-  agent: CreatedAgent;
-  mcpEndpoint: string;
-  onDone: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const snippet = JSON.stringify(
-    { mcpServers: { agentboard: { url: mcpEndpoint, headers: { Authorization: `Bearer ${agent.token}` } } } },
-    null,
-    2
-  );
-
-  return (
-    <div>
-      <p className="text-sm text-ink">Copy this now — it won&apos;t be shown again.</p>
-
-      <div className="mono mt-3 flex items-center gap-2 border border-line bg-paper px-3 py-2 text-xs">
-        <span className="truncate">{agent.token}</span>
-        <button
-          onClick={() => {
-            navigator.clipboard?.writeText(agent.token);
-            setCopied(true);
-          }}
-          className="ml-auto shrink-0 bg-orange px-2 py-1 text-[10px] uppercase text-paper"
-        >
-          {copied ? "copied" : "copy"}
-        </button>
-      </div>
-
-      <div className="mono mt-3 text-[11px] uppercase tracking-widest text-ink-soft">MCP config</div>
-      <pre className="mono mt-1 overflow-x-auto border border-line bg-paper p-3 text-[11px] leading-relaxed">
-        {snippet}
-      </pre>
-
-      <button onClick={onDone} className="mt-4 border border-line px-3 py-1.5 text-xs hover:bg-paper">
-        I&apos;ve saved it
-      </button>
     </div>
   );
 }

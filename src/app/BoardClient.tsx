@@ -6,6 +6,7 @@ import { STATUS_UI, statusColor } from "@/lib/status-ui";
 import { createTaskAction, type ActionResult } from "@/app/actions";
 import type { BoardTask, AgentRow } from "@/lib/manager-queries";
 import { Modal } from "@/app/_components/Modal";
+import { AddAgentFlow } from "@/app/_components/AddAgentFlow";
 
 function relative(iso: string): string {
   const s = Math.floor((Date.now() - Date.parse(iso)) / 1000);
@@ -19,15 +20,18 @@ export function BoardClient({
   initialTasks,
   agents,
   capped,
+  mcpEndpoint,
 }: {
   initialTasks: BoardTask[];
   agents: AgentRow[];
   capped: boolean;
+  mcpEndpoint: string;
 }) {
   const [tasks, setTasks] = useState<BoardTask[]>(initialTasks);
   const [live, setLive] = useState(false);
   const [announce, setAnnounce] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [addAgent, setAddAgent] = useState(false);
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   // Live board: subscribe to tasks changes, refetch snapshot on each (D9 pattern).
@@ -89,9 +93,14 @@ export function BoardClient({
       {noAgents && (
         <div className="clip-corner mt-4 border border-dashed border-line p-8 text-center">
           <p className="text-sm text-ink-soft">No agents yet — you can&apos;t assign work to nobody.</p>
-          <a href="/agents?new=1" className="mono mt-2 inline-block text-sm text-orange">→ Add your first agent</a>
+          <button onClick={() => setAddAgent(true)} className="mono mt-2 inline-block text-sm text-orange">
+            → Add your first agent
+          </button>
         </div>
       )}
+
+      {/* Add-agent flow opens in place on the board (no navigation). */}
+      {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAddAgent(false)} />}
 
       <Modal open={showNew && !noAgents} onClose={() => setShowNew(false)} title="New task" systemTag="SYS:: ASSIGN">
         <NewTaskPanel agents={agents} onDone={() => setShowNew(false)} />

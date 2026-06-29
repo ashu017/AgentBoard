@@ -26,6 +26,7 @@ export async function createAgentAction(
     const description = String(formData.get("description") ?? "");
     const agent = await _createAgent(name, description);
     revalidatePath("/agents");
+    revalidatePath("/"); // board's assignee list + no-agents state depend on this
     return { ok: true, data: agent };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create agent" };

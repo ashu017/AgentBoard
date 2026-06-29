@@ -11,10 +11,12 @@ export default async function BoardPage() {
   if (!session) redirect("/login");
 
   const [{ tasks, capped }, agents] = await Promise.all([listBoardTasks(), listAgents()]);
+  const origin = process.env.NEXT_PUBLIC_APP_ORIGIN ?? "";
+  const mcpEndpoint = `${origin}/api/mcp`;
 
   return (
     <Shell active="board" workspaceName={session.workspace.name}>
-      <BoardClient initialTasks={tasks} agents={agents} capped={capped} />
+      <BoardClient initialTasks={tasks} agents={agents} capped={capped} mcpEndpoint={mcpEndpoint} />
     </Shell>
   );
 }
