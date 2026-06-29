@@ -184,11 +184,18 @@ would ship green and leak. Structural enforcement guards all paths (systems over
 ## Behavior, performance & reliability
 
 ### D-STATUS — Statuses + single source of truth
-**Status:** Active · 2026-06-26
-Statuses: `todo`, `in_progress`, `done`, `failed`. Transitions: `todo→in_progress`,
-`todo→failed`, `in_progress→{done|failed}`, `in_progress→todo`. `done`/`failed` terminal
-(exit → `409`). The enum + transition map live in one shared `lib/task-status.ts` imported
-by the DB `CHECK`, MCP validators, UI, and tests.
+**Status:** Active · 2026-06-26 · **Revised 2026-06-29** (added `in_review`)
+Statuses: `todo`, `in_progress`, `in_review`, `done`, `failed`. Transitions:
+`todo→in_progress`, `todo→failed`, `in_progress→{in_review|done|failed}`,
+`in_progress→todo`, and (Level B, later) `in_review→{in_progress|done|failed}` on human
+resolution. `done`/`failed` terminal (exit → `409`). The enum + transition map live in one
+shared `lib/task-status.ts` imported by the DB `CHECK`, MCP validators, UI, and tests.
+**`in_review` added 2026-06-29 (Level A — status only):** an agent can park a task
+awaiting human approval; it's visible on the board. This is the approval-gate primitive
+from POSITION (a moat piece). The resolution loop (human Approve/Reject + an MCP tool for
+the agent to read the verdict and resume) is **Level B**, deferred as the next deliberate
+feature — it's the first human write-action on the board, so it gets real design, not a
+mid-spike bolt-on. Migration `0002_add_in_review.sql` widens the live CHECK constraint.
 **Why:** Cut from a larger set to the minimum the loop needs. Single source prevents the
 classic drift where the API allows a move the UI can't render (DRY).
 
@@ -287,11 +294,16 @@ live-region trap) isn't viewport-dependent.
 
 Multi-user workspaces / invites / roles · DB-enforced agent RLS (Appendix A) · pull/claim
 task pool · extra MCP tools (`get_task`, `add_comment`, `heartbeat`) · statuses
-`blocked`/`in_review`/`backlog` · priorities/labels/due dates/comments · short-lived/
+`blocked`/`backlog` · **Level B approval loop** (human Approve/Reject on `in_review` + an
+MCP verdict-read tool so the agent resumes — the moat-defining human-in-the-loop gate; next
+deliberate feature after S0) · priorities/labels/due dates/comments · short-lived/
 rotating agent tokens · published agent SDK · true mobile reflow · optimistic UI ·
 light+dark theming · rendered visual mockups (needs an OpenAI key; recommended first UI
 step) · per-key rate limiting (first follow-up; `last_seen_at` throttle blunts the
 runaway-agent write pressure for now).
+
+(`in_review` itself is no longer deferred — pulled into scope 2026-06-29 at Level A;
+see D-STATUS.)
 
 ## Open / unvalidated risks
 

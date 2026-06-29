@@ -6,9 +6,11 @@ import { createClient } from "@supabase/supabase-js";
 // into client code.
 export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // New Supabase secret key (sb_secret_...), server-only — replaces the legacy
+  // service_role JWT. Bypasses RLS.
+  const key = process.env.SUPABASE_SECRET_KEY;
   if (!url || !key) {
-    throw new Error("Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY");
+    throw new Error("Missing SUPABASE env: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SECRET_KEY");
   }
   return createClient(url, key, { auth: { persistSession: false } });
 }

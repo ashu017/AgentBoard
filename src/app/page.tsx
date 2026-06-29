@@ -16,12 +16,14 @@ type Task = { id: string; title: string; status: string; result: string | null }
 // Lazy: don't touch env at module load (build has no env → would crash).
 function getSupabase(): SupabaseClient | null {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // New Supabase publishable key (sb_publishable_...), browser-safe — replaces
+  // the legacy anon JWT. Needs NEXT_PUBLIC_ so it's available client-side.
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) return null;
   return createClient(url, key);
 }
 
-const COLUMNS = ["todo", "in_progress", "done", "failed"] as const;
+const COLUMNS = ["todo", "in_progress", "in_review", "done", "failed"] as const;
 
 export default function Board() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -80,7 +82,7 @@ export default function Board() {
           {live ? "● LIVE" : "○ connecting"}
         </span>
       </h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginTop: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLUMNS.length},1fr)`, gap: 12, marginTop: 16 }}>
         {COLUMNS.map((col) => (
           <section key={col} style={{ border: "1px solid #283040", borderRadius: 8, padding: 10 }}>
             <h2 style={{ fontSize: 11, textTransform: "uppercase", opacity: 0.6 }}>

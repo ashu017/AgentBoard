@@ -28,7 +28,7 @@ const mcpHandler = createMcpHandler((server) => {
     "S0 spike: create a task with a status/result; it should appear live on the board.",
     {
       title: z.string().min(1).describe("Task title (creates a new task)"),
-      status: z.enum(["todo", "in_progress", "done", "failed"]).default("in_progress"),
+      status: z.enum(["todo", "in_progress", "in_review", "done", "failed"]).default("in_progress"),
       result: z.string().max(4000).optional(),
     },
     async ({ title, status, result }) => {
