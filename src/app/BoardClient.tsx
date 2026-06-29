@@ -89,7 +89,7 @@ export function BoardClient({
       {noAgents && (
         <div className="clip-corner mt-4 border border-dashed border-line p-8 text-center">
           <p className="text-sm text-ink-soft">No agents yet — you can&apos;t assign work to nobody.</p>
-          <a href="/agents" className="mono mt-2 inline-block text-sm text-orange">→ Add your first agent</a>
+          <a href="/agents?new=1" className="mono mt-2 inline-block text-sm text-orange">→ Add your first agent</a>
         </div>
       )}
 
