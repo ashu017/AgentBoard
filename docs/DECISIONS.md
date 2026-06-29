@@ -272,6 +272,37 @@ The full agent plane landed and is proven end-to-end through a real MCP client.
 now expects a real per-agent key — the old spike token will get 401. (S0 gate scripts that
 used it are historical.)
 
+### S1-P3 — Phase 3 built: auth foundation + the 3 UI screens (operator console)
+**Status:** Active · 2026-06-29
+The human half landed and the full MVP loop is proven end-to-end in a real browser.
+- **Auth (3a):** `@supabase/ssr` clients (`supabase-server` cookie-bound user session +
+  `supabase-browser` for board Realtime); `proxy.ts` (Next 16's renamed middleware)
+  refreshes the session and skips `/api/mcp`. `getOrCreateWorkspace` (D2, idempotent +
+  race-safe), `session.ts`, and `manager-actions.ts` (createAgent shown-once key /
+  revokeAgent / createTask + created event). +5 live-DB tests incl. workspace-bootstrap and
+  the human-plane RLS-deny.
+- **Design system:** `globals.css` implements the 4A operator-console aesthetic from the
+  Figma Make reference — warm paper `#f0ece6` on a faint grid, monospace ids, cut-corner
+  cards, color = status signal (Failed magenta the only loud one), `SYS::` system bar.
+- **3 screens:** Board (`page.tsx`+`BoardClient` — live Realtime subscribe-then-refetch,
+  scan summary line, Failed-loud/Done-quiet 5 columns, aria-live a11y, no-agents/empty
+  states, New-task panel = Screen 3); Agents (`agents/` — roster + connected dot +
+  **shown-once key panel with paste-ready MCP config**); Login (`login/` — GitHub button
+  parked + dev-login shim).
+- **Dev login:** `DEV_LOGIN=1`-gated shim (`login/actions.ts` + `dev-flags.ts`) so the board
+  is usable before GitHub OAuth is wired. Real flow = GitHub OAuth (Phase 3b).
+- **Verified in-browser (gstack /browse):** dev login → workspace bootstrapped → create
+  agent → shown-once key + MCP snippet → create+assign task → drove `update_task_status` via
+  a REAL MCP client → board reflects the move, summary line updates, connected dot flips
+  (D10 last_seen). tsc clean, lint 0, build passes, 65 tests green.
+**Still open (Phase 3b — account-gated):** real GitHub OAuth (OAuth App + Supabase provider
++ callback route) replacing the dev shim; then E2E (Playwright) + remaining must-have tests
+(concurrent-transition guard, board states).
+**Known limitation:** Realtime live-move couldn't be confirmed through the browse CLI (it
+snapshots, doesn't keep page JS running); Gate B already PROVED Realtime delivery at the DB
+level (D9-RT) and a reload confirms persistence. A Playwright E2E will assert the no-reload
+move in Phase 4.
+
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
 A new user's single workspace is created by an idempotent app-code `getOrCreateWorkspace()`
