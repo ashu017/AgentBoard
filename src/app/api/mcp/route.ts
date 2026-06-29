@@ -22,29 +22,36 @@ import { createAdminClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs"; // service-role + node deps, not edge
 
-const mcpHandler = createMcpHandler((server) => {
-  server.tool(
-    "update_task",
-    "S0 spike: create a task with a status/result; it should appear live on the board.",
-    {
-      title: z.string().min(1).describe("Task title (creates a new task)"),
-      status: z.enum(["todo", "in_progress", "in_review", "done", "failed"]).default("in_progress"),
-      result: z.string().max(4000).optional(),
-    },
-    async ({ title, status, result }) => {
-      const db = createAdminClient();
-      const { data, error } = await db
-        .from("tasks")
-        .insert({ title, status, result, updated_at: new Date().toISOString() })
-        .select("id,title,status")
-        .single();
-      if (error) {
-        return { isError: true, content: [{ type: "text", text: `DB error: ${error.message}` }] };
+const mcpHandler = createMcpHandler(
+  (server) => {
+    server.tool(
+      "update_task",
+      "S0 spike: create a task with a status/result; it should appear live on the board.",
+      {
+        title: z.string().min(1).describe("Task title (creates a new task)"),
+        status: z.enum(["todo", "in_progress", "in_review", "done", "failed"]).default("in_progress"),
+        result: z.string().max(4000).optional(),
+      },
+      async ({ title, status, result }) => {
+        const db = createAdminClient();
+        const { data, error } = await db
+          .from("tasks")
+          .insert({ title, status, result, updated_at: new Date().toISOString() })
+          .select("id,title,status")
+          .single();
+        if (error) {
+          return { isError: true, content: [{ type: "text", text: `DB error: ${error.message}` }] };
+        }
+        return { content: [{ type: "text", text: `ok: ${JSON.stringify(data)}` }] };
       }
-      return { content: [{ type: "text", text: `ok: ${JSON.stringify(data)}` }] };
-    }
-  );
-});
+    );
+  },
+  {},
+  // This route lives at /api/mcp. mcp-handler defaults its match endpoint to
+  // `/mcp`; without basePath it 404s every request to /api/mcp (Gate A finding,
+  // DECISIONS 1A). basePath:"/api" makes it match /api/mcp.
+  { basePath: "/api" }
+);
 
 // Bearer auth — S0 uses one shared spike token (v1 → per-agent hashed key, D12).
 function authed(req: NextRequest): boolean {

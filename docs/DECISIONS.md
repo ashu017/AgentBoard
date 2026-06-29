@@ -123,6 +123,49 @@ MCP client connects on deployed Vercel) still pending a deploy.
 (build-time prerender has no env → crash). The board page lazily constructs the Supabase
 client and is `force-dynamic`.
 
+**Gate A result — 2026-06-29 (deployed `https://jiraagent.vercel.app/api/mcp`): FAIL —
+two distinct blockers, both fixable; NOT named-fallback territory (no evidence serverless
+cannot sustain MCP).** Drove a real client — official `@modelcontextprotocol/sdk` `Client`
++ `StreamableHTTPClientTransport(new URL(endpoint), { requestInit: { headers: {
+Authorization: "Bearer <AGENT_SPIKE_TOKEN from .env.local>" } } })` — and corroborated
+with raw `curl`. Repro: `node scripts/gate-a-deployed.mjs` (parses `.env.local`, never
+prints the token; `GATE_A_ENDPOINT` env var overrides the URL for local runs).
+
+1. **Blocker #1 — Vercel `AGENT_SPIKE_TOKEN` mismatch (auth, the 401).** The deployed
+   handshake fails at `initialize` with HTTP **401 `{"error":"unauthorized"}`** — the
+   route's own auth body, returned *before* `mcp-handler` runs. Proven to be an env
+   mismatch, not a client/transport bug: the **same** token in `.env.local`, sent in the
+   **same** `Authorization: Bearer …` header, is **accepted locally** (reaches the handler
+   — see blocker #2) but **rejected on Vercel**. Since `route.ts` returns that body only
+   when the header is not `Bearer ` + `process.env.AGENT_SPIKE_TOKEN`, and the header is
+   provably present, the deployed `AGENT_SPIKE_TOKEN` either differs from `.env.local` or
+   is unset on Vercel (unset → `expected` undefined → `authed()` false).
+   **Fix:** set the Vercel `AGENT_SPIKE_TOKEN` env var to exactly the `.env.local` value
+   (32 chars here) and **redeploy** (env changes do not apply to existing deployments).
+2. **Blocker #2 — `mcp-handler` basePath misconfig (the handler 404), hidden behind the
+   401 on deployed but reproduced locally.** With a valid token, the local endpoint returns
+   HTTP **404 `Not found`** instead of an MCP response. Cause: `createMcpHandler(...)` in
+   `route.ts` is called with **no options**, so `mcp-handler@1.1.0` defaults
+   `streamableHttpEndpoint` to `/mcp` and matches it as `url.pathname === streamableHttpEndpoint`
+   (dist/index.js:279). Our route lives at **`/api/mcp`**, so the pathname never matches and
+   it falls through to the catch-all 404 (dist/index.js:676). Bearer auth passes (404, not
+   401, confirms the handler was reached) — this is purely a path-prefix bug.
+   **Fix:** tell `mcp-handler` about the `/api` prefix —
+   `createMcpHandler(setup, serverOptions, { basePath: "/api" })` (or
+   `{ streamableHttpEndpoint: "/api/mcp" }`). One-line scaffold fix, *not* a product feature.
+   **Note:** `mcp-handler`'s GET/SSE stream path additionally wants `REDIS_URL`/`KV_URL`
+   (dist/index.js:181 throws "redisUrl is required"); the stateless POST handshake does not
+   need it, but a client that opens the GET stream would. Confirm during re-test whether the
+   target client only POSTs (works statelessly) or also opens the stream (then provision
+   KV/Redis on Vercel).
+
+**Sequencing to close Gate A:** fix #2 in `route.ts` and reconcile #1's Vercel env var,
+redeploy, then re-run `node scripts/gate-a-deployed.mjs`. Cold-start/streaming behavior
+could not yet be assessed — both failures occur at/before `initialize`, so the deployed
+function never executed tool logic. No `tasks` rows were created (both calls failed before
+the insert; table verified empty via service-role). Artifact left in repo:
+`scripts/gate-a-deployed.mjs` (the reusable real-client driver).
+
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
 A new user's single workspace is created by an idempotent app-code `getOrCreateWorkspace()`
@@ -208,12 +251,36 @@ classic drift where the API allows a move the UI can't render (DRY).
 payload size and board render.
 
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
-**Status:** Active · 2026-06-26
+**Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
 The board only receives an agent's live update if the agent-written (service-role) row
 passes the *human* RLS SELECT policy. This is made an explicit sequenced gate with an
 isolation test asserting a board client receives an agent-plane write under RLS.
 **Why:** If the policy is wrong, writes commit but the board never moves and **nothing
 errors** — a silent failure of the most-demoed feature. The gate makes it loud.
+
+**Gate B result — 2026-06-29 (live Supabase `ltdyxrfposxejokhikca`, local subscriber):
+PASS.** A real subscribed client (anon/publishable key, `postgres_changes` on
+`public.tasks`, `event:"*"` — the exact client shape `src/app/page.tsx` uses) reached
+`SUBSCRIBED`, then received every service-role write live under the `s0_anon_read_tasks`
+RLS SELECT policy: **INSERT** (todo), **UPDATE** (→in_progress), and the newly-enabled
+**in_review** UPDATE. Latencies were ~60–600ms (two runs); no silent drop. The silent-
+failure mode D9-RT guards against did **not** occur with this config. What makes it work
+in this spike: (1) `tasks` is in the `supabase_realtime` publication (migration 0001);
+(2) RLS is enabled with an anon SELECT policy `using (true)` — Realtime authorizes
+`postgres_changes` delivery by re-checking the subscriber's RLS read access against each
+changed row, so the SELECT policy must admit the row or the event is dropped silently;
+(3) the writer uses the service-role key (bypasses RLS to write), the subscriber uses the
+anon key (subject to RLS). Repro: `node scripts/spike-gateB-realtime.mjs` (parses
+`.env.local`, asserts each event arrives within an 8s timeout, deletes its row; table left
+empty). **Caveats / still open:** this is the deliberately-loose S0 spike policy
+(`using (true)` admits all rows). The real D9-RT risk lands in **S1** when the SELECT
+policy becomes workspace-scoped (`owner_user_id = auth.uid()`) — the failure to hunt then
+is: a service-role write must still match the *authenticated* subscriber's scoped policy,
+or the board for that owner goes silent. That scoped-policy delivery must be re-proven in
+S1 (it is not proven by this spike). Also unproven here: delivery against a **deployed**
+Realtime path under serverless conditions — Realtime runs as a Supabase-hosted service
+(not a Vercel function), so a Vercel deploy is not required to exercise it, but the
+end-to-end board page on Vercel was not run (no deploy yet; Gate A still blocked).
 
 ### D10 — Throttle `last_seen_at`
 **Status:** Active · 2026-06-26
