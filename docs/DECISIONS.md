@@ -104,7 +104,7 @@ RLS, so the marquee RLS justification isn't fully exercised in v1. Accepted to s
 v2 trajectory and avoid a later migration.
 
 ### 1A — MCP via the official SDK, stateless Streamable-HTTP
-**Status:** Active · 2026-06-26
+**Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate A PASS, deployed Vercel)**
 The agent interface is real MCP using the official MCP TypeScript SDK in stateless
 Streamable-HTTP mode, as Next.js route handlers — not a bespoke JSON endpoint labeled
 "MCP". Pin the SDK version. **Spike first** with a real MCP client; **named fallback** is a
@@ -165,6 +165,48 @@ could not yet be assessed — both failures occur at/before `initialize`, so the
 function never executed tool logic. No `tasks` rows were created (both calls failed before
 the insert; table verified empty via service-role). Artifact left in repo:
 `scripts/gate-a-deployed.mjs` (the reusable real-client driver).
+
+**Gate A re-test — 2026-06-29 (deployed `https://jiraagent.vercel.app/api/mcp`): PASS —
+full end-to-end through a real MCP client on deployed serverless.** Both prior blockers are
+fixed: #2 by `createMcpHandler(setup, {}, { basePath: "/api" })` in `route.ts` (committed
+`08fbd1d`); #1 by reconciling the Vercel `AGENT_SPIKE_TOKEN` env var to `.env.local` and
+redeploying. Re-ran with a real client (official `@modelcontextprotocol/sdk` `Client` +
+`StreamableHTTPClientTransport(new URL(endpoint), { requestInit: { headers: { Authorization:
+"Bearer <AGENT_SPIKE_TOKEN>" } } })`) driving the complete flow + a service-role DB read-back.
+Repro: `node scripts/gate-a-deployed-full.mjs` (parses `.env.local`, never prints secrets).
+Observed, step by step:
+1. **`initialize`** — 200. `serverInfo = {"name":"mcp-typescript server on vercel","version":"0.1.0"}`,
+   `capabilities = {"tools":{"listChanged":true}}`. Transport `sessionId` was **none** — the
+   client negotiated the stateless path, no session header issued.
+2. **`tools/list`** — returns `update_task` with the expected JSON-Schema: `title` (string,
+   minLength 1) **required**; `status` enum `["todo","in_progress","in_review","done","failed"]`
+   default `in_progress`; `result` optional string maxLength 4000.
+3. **`tools/call update_task`** (title "gate-a deployed proof …", status `in_review`,
+   result set) — `isError=false`, returned `ok: {"id":"38c84845-…","title":…,"status":"in_review"}`.
+4. **Service-role DB read-back** — row present with `status="in_review"`, matching title/result,
+   `updated_at` set. The MCP tool's service-role insert genuinely landed in Postgres.
+5. **Cleanup** — deleted the row; `tasks` count back to **0**. No artifacts left in the DB.
+
+**Serverless specifics observed:** cold-start first call (`initialize`) ~2.2s on a cold
+function; warm second run ~0.9s. `tools/call` (incl. the Supabase insert) ~1.1–1.6s. The
+stateless POST/streaming response worked cleanly through the real SDK client; **no retries**
+were needed on either run, and behavior was reproducible across two runs.
+
+**Redis/KV question — RESOLVED: not required for the flow real clients use.** No
+`REDIS_URL`/`KV_URL`/Upstash var is set on the project, and the full handshake → tool-call
+flow above succeeds without one. The real SDK client uses the **stateless POST** path and
+never opens a GET stream (confirmed: `transport.sessionId` was none). A direct `GET /api/mcp`
+(SSE-stream open) returns a clean **HTTP 405 `{"jsonrpc":"2.0","error":{"code":-32000,
+"message":"Method not allowed."}}`** — i.e. `mcp-handler` declines the stream in stateless
+mode rather than crashing on the missing `redisUrl`. So Vercel KV/Redis does **not** need to
+be provisioned for S0 (or for the v1 agent-write flow). It would only matter if a future
+client *requires* the server-initiated GET/SSE stream (e.g. server→client notifications); if
+that need arises in S1+, provision Vercel KV then. Not a blocker now.
+
+**Verdict: S0 Gate A PASS.** With Gate B already PROVEN (D9-RT), **both S0 gates are green —
+S0 is fully cleared** and feature work (S1) is unblocked. Artifact left in repo:
+`scripts/gate-a-deployed-full.mjs` (full end-to-end driver: handshake → tools/list → call →
+DB read-back → cleanup); the earlier `scripts/gate-a-deployed.mjs` remains as the minimal driver.
 
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
