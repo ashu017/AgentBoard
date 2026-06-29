@@ -535,6 +535,51 @@ live-region trap) isn't viewport-dependent.
 
 ---
 
+## Next phase — planned, not built (roadmap)
+
+Captured for a future phase; no code/agent files created yet.
+
+### NEXT-1 — Hierarchical tasks (project → task) + agent decomposition + board filters
+**Status:** Spec'd 2026-06-30 · not built. Full design:
+`docs/superpowers/specs/2026-06-30-hierarchical-tasks-design.md`. In brief: single
+recursive `tasks` table (`parent_id`, depth-capped at 2, recursion-ready); a "project" is
+a parent-less task with children; humans **and** agents create child tasks (new
+`create_subtask` MCP tool); subagents stay internal to the agent runtime; agent owns parent
+status (no rollup, board shows `N/M done`); board gains timeline (2w default / 30d / 90d /
+all, on `updated_at`) + status (active default / all) filters.
+
+### NEXT-2 — Recurring tasks
+**Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
+recurrence rule + a scheduler that clones a template on a cadence). To be designed
+separately; noted so NEXT-1's model choices don't box it in (template-vs-instance may
+reopen the data model).
+
+### NEXT-3 — Build/launch subagents (Claude Code agents in `.claude/agents/`)
+**Status:** Planned, not created (deferred 2026-06-30 at user request). These are **Claude
+Code subagents** that help build/test/launch AgentBoard (like the existing `spike-runner`),
+NOT AgentBoard product agents — though the dogfooding dream is to eventually run them
+*through* the board over MCP. Candidates, roughly by near-term value to this project:
+- **Testing agent** — Vitest + Playwright (UI / smoke / synthetic / backend); would own the
+  pending Phase 4 E2E work.
+- **Development agent** — one dev agent that invokes existing engineering skills
+  (`senior-frontend` / `senior-backend` / `senior-security` / architect) rather than
+  bundling personas.
+- **DB / migration agent** — Supabase migrations, RLS policies, advisor remediation.
+- **Deploy / release agent** — Vercel deploys, env vars, deploy health, rollback, release notes.
+- **Security / isolation agent** — cross-tenant isolation, RLS-deny tests, service-role
+  boundary, advisor scans.
+- **Social / launch agent** — drafts posts for Reddit (subreddits), Hacker News, Product
+  Hunt, LinkedIn. **Draft-only**; actual posting needs API creds + per-post human approval
+  (outward-facing).
+- **Design agent** (low priority) — Figma UI designs. Partly blocked: Figma MCP is on the
+  Amazon account (IP concern) until a personal Figma is sorted.
+- **Docs / decision-log agent** — keeps DECISIONS/design/CLAUDE/HANDOFF consistent + release notes.
+- **Demo-seed agent** — seeds realistic agents+tasks for screenshots/demos/launch assets.
+- **MCP-integration agent** — owns the agent plane (MCP tools, SDK upgrades, real external
+  client testing) beyond `spike-runner`'s S0-only scope.
+Open scoping questions to resolve when building: per-agent scope (test-only vs test+fix),
+dev-agent-invokes-skills vs separate agents, and whether these later become product agents.
+
 ## Deferred (not built in v1)
 
 Multi-user workspaces / invites / roles · DB-enforced agent RLS (Appendix A) · pull/claim
