@@ -235,6 +235,43 @@ human-plane RLS — backend only, no UI/auth yet.
 gen/hash + cross-tenant test), then auth/session layer + `getOrCreateWorkspace` (D2), then
 the 3 UI screens, then E2E.
 
+### S1-P2 — Phase 2 built: the agent MCP plane (3 tools, scoped, atomic)
+**Status:** Active · 2026-06-29
+The full agent plane landed and is proven end-to-end through a real MCP client.
+- **`src/lib/api-key.ts`** — `ab_<prefix>_<secret>` gen (256-bit secret), SHA-256 hash of
+  the full token, prefix extraction, constant-time compare (D12). Unit-tested incl. a
+  1000× uniqueness check.
+- **`src/lib/agent-db.ts`** — the confined, `server-only` service-role module (3A). D8
+  structural scoping: `scopedTasks(ctx)` is private and the ONLY task-query path, and it
+  *requires* an `AgentContext` (the sole way to get one is `resolveAgentByKey`), so no
+  unscoped query can be written against this surface. Ops: `resolveAgentByKey`,
+  `listMyTasks`, `updateTaskStatus`, `submitResult`, throttled `touchLastSeen` (D10, 45s).
+- **`src/lib/agent-errors.ts`** — typed `AgentError` mapping the contract (400/401/404/409/
+  413); not-your-task is **404 never 403**.
+- **Migration `0004_agent_rpcs.sql`** — two Postgres functions resolve the
+  "no multi-statement txn in supabase-js" problem: `append_task_event` (the single
+  event-construction point) and `agent_apply_transition` (atomic compare-and-swap on
+  `status = p_from` = the **lost-update guard**, + event, in one txn). Transition
+  *legality* stays in `task-status.ts` (SSOT) — the RPC only does the CAS. RPCs revoked
+  from anon/authenticated (service-role only).
+- **`src/app/api/mcp/route.ts`** — replaced the S0 spike's single `update_task` with the 3
+  real tools. Auth changed from one shared `AGENT_SPIKE_TOKEN` to **per-agent keys** via
+  `withMcpAuth` (resolves the key → `AgentContext` in `authInfo.extra`; bad/revoked/unknown
+  → 401). Production build passes; `/api/mcp` is a dynamic function.
+- **Tests:** 60 green. Unit (status matrix, api-key) + **live-DB integration** incl. the
+  **CRITICAL cross-tenant isolation trio** (A can't read/update/submit to B's tasks — sees
+  404), revoked-key 401, the full transition/submit/413 contract, and the D10 throttle.
+  Plus a runtime smoke (`scripts/phase2-tools-smoke.mjs`) driving all 3 tools through a real
+  SDK client: handshake → list → update → submit → illegal-transition-409, DB end state
+  verified.
+- **Test-hygiene fix:** integration teardown now deletes the workspace explicitly (cascade)
+  + the auth user and surfaces errors, instead of relying on `deleteUser` cascade with
+  swallowed errors (which left orphaned rows when the process exited early). Full run now
+  leaves the DB at 0 rows.
+**Auth note:** `AGENT_SPIKE_TOKEN` is no longer used by the route. The deployed endpoint
+now expects a real per-agent key — the old spike token will get 401. (S0 gate scripts that
+used it are historical.)
+
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
 A new user's single workspace is created by an idempotent app-code `getOrCreateWorkspace()`

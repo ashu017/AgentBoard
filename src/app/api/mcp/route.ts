@@ -1,80 +1,141 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createMcpHandler } from "mcp-handler";
+import { createMcpHandler, withMcpAuth } from "mcp-handler";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { z } from "zod";
-import { createAdminClient } from "@/lib/supabase-admin";
+import {
+  resolveAgentByKey,
+  touchLastSeen,
+  listMyTasks,
+  updateTaskStatus,
+  submitResult,
+  type AgentContext,
+} from "@/lib/agent-db";
+import { AgentError } from "@/lib/agent-errors";
+import { STATUSES } from "@/lib/task-status";
 
 // ───────────────────────────────────────────────────────────────────────────
-// AgentBoard S0 spike — MCP server via Vercel's mcp-handler (DECISIONS 1A,
-// refined: the bare SDK transport expects Node req/res and does NOT fit a
-// Next.js Fetch route handler — mcp-handler bridges that and runs stateless
-// on serverless).
+// AgentBoard v1 MCP server — the agent plane (design.md "MCP server"; DECISIONS
+// 1A/D12/3A). Three tools, authenticated per-call by a per-agent bearer key:
 //
-//   MCP client ──POST /api/mcp──▶ mcp-handler ──▶ tool: update_task
-//                                                   │ service-role write
-//                                                   ▼
-//                                               Supabase tasks row
-//                                                   │ WAL / Realtime
-//                                                   ▼  board page (subscribed)
+//   list_my_tasks(status?)              — the agent's own tasks
+//   update_task_status(task_id, status, note?)
+//   submit_result(task_id, output, status?)
 //
-// Proves S0 gate (a) MCP handshake on serverless AND, with the board page,
-// gate (b) an agent write reaches the board under RLS.
+// Auth: withMcpAuth verifies the bearer, resolves (agentId, workspaceId) via the
+// confined service-role module, and carries it in authInfo.extra. Every tool
+// reads that context — no tool can act outside the resolved agent's scope.
+// Errors map to the contract (400/401/404/409/413) via AgentError.
 // ───────────────────────────────────────────────────────────────────────────
 
 export const runtime = "nodejs"; // service-role + node deps, not edge
 
-const mcpHandler = createMcpHandler(
+const STATUS_ENUM = z.enum(STATUSES);
+
+/** Pull the resolved AgentContext out of the MCP auth info. */
+function ctxFrom(extra: { authInfo?: AuthInfo }): AgentContext {
+  const ctx = extra.authInfo?.extra as AgentContext | undefined;
+  if (!ctx) throw new AgentError(401, "Unauthenticated");
+  return ctx;
+}
+
+/** Map an AgentError (or unexpected error) to an MCP tool error result. */
+function toolError(err: unknown) {
+  const code = err instanceof AgentError ? err.code : 500;
+  const message = err instanceof Error ? err.message : "Internal error";
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: `error ${code}: ${message}` }],
+  };
+}
+
+function ok(data: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+}
+
+const baseHandler = createMcpHandler(
   (server) => {
     server.tool(
-      "update_task",
-      "S0 spike: create a task with a status/result; it should appear live on the board.",
-      {
-        title: z.string().min(1).describe("Task title (creates a new task)"),
-        status: z.enum(["todo", "in_progress", "in_review", "done", "failed"]).default("in_progress"),
-        result: z.string().max(4000).optional(),
-      },
-      async ({ title, status, result }) => {
-        const db = createAdminClient();
-        const { data, error } = await db
-          .from("tasks")
-          .insert({ title, status, result, updated_at: new Date().toISOString() })
-          .select("id,title,status")
-          .single();
-        if (error) {
-          return { isError: true, content: [{ type: "text", text: `DB error: ${error.message}` }] };
+      "list_my_tasks",
+      "List the tasks assigned to the calling agent, optionally filtered by status.",
+      { status: STATUS_ENUM.optional().describe("Filter to this status if given") },
+      async ({ status }, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const tasks = await listMyTasks(ctx, status);
+          return ok({ tasks });
+        } catch (err) {
+          return toolError(err);
         }
-        return { content: [{ type: "text", text: `ok: ${JSON.stringify(data)}` }] };
+      }
+    );
+
+    server.tool(
+      "update_task_status",
+      "Move one of your tasks to a new status. Illegal transitions are rejected.",
+      {
+        task_id: z.string().min(1).describe("The task id (must be assigned to you)"),
+        status: STATUS_ENUM.describe("Target status"),
+        note: z.string().max(2000).optional().describe("Optional note recorded in history"),
+      },
+      async ({ task_id, status, note }, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const task = await updateTaskStatus(ctx, task_id, status, note);
+          return ok({ task });
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
+      "submit_result",
+      "Submit a result for an in-progress task; optionally also move it to a terminal status (done/failed).",
+      {
+        task_id: z.string().min(1).describe("The task id (must be assigned to you)"),
+        output: z.string().describe("The result payload (max 256 KB)"),
+        status: STATUS_ENUM.optional().describe("Optional terminal status to set (done/failed)"),
+      },
+      async ({ task_id, output, status }, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const task = await submitResult(ctx, task_id, output, status);
+          return ok({ task });
+        } catch (err) {
+          return toolError(err);
+        }
       }
     );
   },
   {},
-  // This route lives at /api/mcp. mcp-handler defaults its match endpoint to
-  // `/mcp`; without basePath it 404s every request to /api/mcp (Gate A finding,
-  // DECISIONS 1A). basePath:"/api" makes it match /api/mcp.
+  // Route lives at /api/mcp; mcp-handler defaults its match endpoint to /mcp,
+  // so basePath:"/api" is required or every request 404s (Gate A finding, 1A).
   { basePath: "/api" }
 );
 
-// Bearer auth — S0 uses one shared spike token (v1 → per-agent hashed key, D12).
-function authed(req: NextRequest): boolean {
-  const expected = process.env.AGENT_SPIKE_TOKEN;
-  if (!expected) return false;
-  return req.headers.get("authorization") === `Bearer ${expected}`;
-}
+// Per-agent bearer auth. verifyToken resolves the key → AgentContext, carried in
+// authInfo.extra. A bad/revoked/unknown key throws 401 in resolveAgentByKey,
+// which withMcpAuth surfaces as an unauthenticated response (required: true).
+const handler = withMcpAuth(
+  baseHandler,
+  async (_req, bearerToken): Promise<AuthInfo | undefined> => {
+    if (!bearerToken) return undefined;
+    try {
+      const ctx = await resolveAgentByKey(bearerToken);
+      return {
+        token: bearerToken,
+        clientId: ctx.agentId,
+        scopes: [],
+        extra: ctx as unknown as Record<string, unknown>,
+      };
+    } catch {
+      // Unknown/revoked key → no auth info → withMcpAuth returns 401.
+      return undefined;
+    }
+  },
+  { required: true }
+);
 
-export async function POST(req: NextRequest) {
-  if (!authed(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-  return mcpHandler(req);
-}
-
-// MCP Streamable-HTTP clients may issue GET (stream) / DELETE (session end);
-// mcp-handler handles them. Auth-gate them the same way.
-export async function GET(req: NextRequest) {
-  if (!authed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  return mcpHandler(req);
-}
-
-export async function DELETE(req: NextRequest) {
-  if (!authed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  return mcpHandler(req);
-}
+export { handler as GET, handler as POST, handler as DELETE };

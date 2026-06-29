@@ -1,0 +1,127 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+// Integration-test harness: loads .env.local, gives a service-role client, and
+// seeds/tears down real workspaces+agents+users so the agent-db path can be
+// exercised end-to-end against the live Supabase project.
+
+export function loadEnv(): Record<string, string> {
+  try {
+    const path = fileURLToPath(new URL("../../.env.local", import.meta.url));
+    const text = readFileSync(path, "utf8");
+    const out: Record<string, string> = {};
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("#") || !t.includes("=")) continue;
+      const i = t.indexOf("=");
+      out[t.slice(0, i).trim()] = t.slice(i + 1).trim();
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+const env = loadEnv();
+
+/** True when the live-DB integration env is present. Tests skip otherwise. */
+export const hasDbEnv = Boolean(env.NEXT_PUBLIC_SUPABASE_URL && env.SUPABASE_SECRET_KEY);
+
+/** Make the agent-db module read the same env when run under Vitest. */
+export function applyEnv(): void {
+  if (env.NEXT_PUBLIC_SUPABASE_URL) process.env.NEXT_PUBLIC_SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL;
+  if (env.SUPABASE_SECRET_KEY) process.env.SUPABASE_SECRET_KEY = env.SUPABASE_SECRET_KEY;
+}
+
+export function admin(): SupabaseClient {
+  return createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
+    auth: { persistSession: false },
+  });
+}
+
+export interface SeededTenant {
+  userId: string;
+  workspaceId: string;
+  agentId: string;
+  /** raw token + hash for this tenant's agent. */
+  token: string;
+  hash: string;
+}
+
+let counter = 0;
+
+/**
+ * Create a real auth user + workspace + agent. Returns ids and the agent key.
+ * Pass a generated key (token+hash+prefix) from src/lib/api-key.
+ */
+export async function seedTenant(
+  key: { token: string; hash: string; prefix: string },
+  label: string
+): Promise<SeededTenant> {
+  const db = admin();
+  const tag = `${Date.now()}-${counter++}`;
+  const email = `agentboard-test-${label}-${tag}@example.test`;
+
+  const { data: userRes, error: userErr } = await db.auth.admin.createUser({
+    email,
+    email_confirm: true,
+  });
+  if (userErr) throw userErr;
+  const userId = userRes.user.id;
+
+  const { data: ws, error: wsErr } = await db
+    .from("workspaces")
+    .insert({ owner_user_id: userId, name: `ws-${label}-${tag}` })
+    .select("id")
+    .single();
+  if (wsErr) throw wsErr;
+
+  const { data: agent, error: agentErr } = await db
+    .from("agents")
+    .insert({
+      workspace_id: ws.id,
+      name: `agent-${label}`,
+      api_key_hash: key.hash,
+      api_key_prefix: key.prefix,
+    })
+    .select("id")
+    .single();
+  if (agentErr) throw agentErr;
+
+  return { userId, workspaceId: ws.id, agentId: agent.id, token: key.token, hash: key.hash };
+}
+
+/** Create a task directly (manager action) for a tenant; returns its id. */
+export async function seedTask(
+  t: SeededTenant,
+  fields: { title: string; status?: string; description?: string }
+): Promise<string> {
+  const { data, error } = await admin()
+    .from("tasks")
+    .insert({
+      workspace_id: t.workspaceId,
+      assigned_agent_id: t.agentId,
+      title: fields.title,
+      description: fields.description ?? null,
+      status: fields.status ?? "todo",
+      created_by_user_id: t.userId,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+/** Remove everything created for a tenant. */
+export async function teardownTenant(t: SeededTenant): Promise<void> {
+  const db = admin();
+  // Delete the workspace explicitly first (cascades agents → tasks → task_events).
+  // Don't rely solely on the auth-user delete cascading — that was unreliable
+  // under Vitest (process can exit before the admin call settles), leaving
+  // orphaned app rows. Surface errors instead of swallowing them silently.
+  const { error: wsErr } = await db.from("workspaces").delete().eq("id", t.workspaceId);
+  if (wsErr) console.warn(`teardown: workspace ${t.workspaceId} delete failed: ${wsErr.message}`);
+  const { error: userErr } = await db.auth.admin.deleteUser(t.userId);
+  if (userErr) console.warn(`teardown: user ${t.userId} delete failed: ${userErr.message}`);
+}

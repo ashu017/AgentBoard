@@ -6,6 +6,9 @@ export default defineConfig({
     // Mirror tsconfig's "@/*" → "src/*" alias so tests import like app code.
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // `server-only` throws outside an RSC bundle; tests run in Node, so alias
+      // it to its own no-op export. (The guard still applies in the Next build.)
+      "server-only": fileURLToPath(new URL("./node_modules/server-only/empty.js", import.meta.url)),
     },
   },
   test: {
