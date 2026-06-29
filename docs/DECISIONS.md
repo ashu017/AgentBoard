@@ -324,6 +324,26 @@ Two UI/behavior refinements on top of S1-P3, both deliberate:
 cleanup of empty agents; and a disabled primary action with no explanation is
 worse UX than an always-live button that explains itself.
 
+### S1-P3c — GitHub OAuth live (production loginnable)
+**Status:** Active · 2026-06-30
+Real GitHub OAuth is wired and **verified end-to-end in production**. A real login
+(`sahuash017@gmail.com`, provider `github`) created the user and auto-bootstrapped
+"My Workspace" (D2 fired on first authenticated request).
+- **Code:** `/auth/callback` route (exchangeCodeForSession → board; failure →
+  `/login?error=oauth`), `signInWithGitHub` action (signInWithOAuth github,
+  redirectTo `${NEXT_PUBLIC_APP_ORIGIN}/auth/callback`), real "Continue with
+  GitHub" button. Dev-login shim retained (local only, DEV_LOGIN=1).
+- **Config (manual, by owner):** GitHub **OAuth App** (NOT a GitHub App) with
+  callback = the Supabase `/auth/v1/callback`; Supabase GitHub provider creds +
+  redirect allow-list incl. `/auth/callback`; Vercel `NEXT_PUBLIC_APP_ORIGIN` =
+  prod URL. Note: `NEXT_PUBLIC_*` is build-time, so changing it needs a redeploy.
+- **Hardening:** migration `0005` pins `search_path` on `append_task_event` and
+  `agent_apply_transition` (advisor 0011). Remaining advisor WARNs are
+  pre-existing `rls_auto_enable()` (not ours) and leaked-password-protection
+  (irrelevant — OAuth only, no passwords).
+**Still open:** Phase 4 — Playwright E2E (incl. the no-reload Realtime move) +
+the concurrent-transition guard test. Then the Level B approval loop (the moat).
+
 ### D2 — Workspace bootstrap: app-code + UNIQUE (reversed from a DB trigger)
 **Status:** Active · 2026-06-26 · **Revised** (originally a DB trigger on `auth.users`)
 A new user's single workspace is created by an idempotent app-code `getOrCreateWorkspace()`
