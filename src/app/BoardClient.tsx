@@ -5,6 +5,7 @@ import { STATUSES, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
 import { createTaskAction, type ActionResult } from "@/app/actions";
 import type { BoardTask, AgentRow } from "@/lib/manager-queries";
+import { Modal } from "@/app/_components/Modal";
 
 function relative(iso: string): string {
   const s = Math.floor((Date.now() - Date.parse(iso)) / 1000);
@@ -92,7 +93,9 @@ export function BoardClient({
         </div>
       )}
 
-      {showNew && !noAgents && <NewTaskPanel agents={agents} onDone={() => setShowNew(false)} />}
+      <Modal open={showNew && !noAgents} onClose={() => setShowNew(false)} title="New task" systemTag="SYS:: ASSIGN">
+        <NewTaskPanel agents={agents} onDone={() => setShowNew(false)} />
+      </Modal>
 
       {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 tasks.</p>}
 
@@ -179,9 +182,8 @@ function NewTaskPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => vo
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <form action={formAction} className="clip-corner mt-4 border border-line bg-paper-2 p-4">
-      <div className="mono text-[11px] uppercase tracking-widest text-ink-soft">New task</div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_220px]">
+    <form action={formAction}>
+      <div className="grid gap-3">
         <input name="title" required placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
         <select name="assignedAgentId" required defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
           <option value="" disabled>Assign to…</option>
@@ -189,10 +191,10 @@ function NewTaskPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => vo
             <option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>
           ))}
         </select>
+        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
       </div>
-      <textarea name="description" placeholder="Description (optional)" rows={2} className="mt-3 w-full border border-line bg-paper px-3 py-2 text-sm" />
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
-      <div className="mt-3 flex gap-2">
+      <div className="mt-4 flex gap-2">
         <button type="submit" disabled={pending} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
           {pending ? "Creating…" : "Create + assign"}
         </button>

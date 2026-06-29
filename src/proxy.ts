@@ -6,7 +6,7 @@ import { createServerClient } from "@supabase/ssr";
 // page-level `getSession()` redirects unauthenticated users. The MCP agent plane
 // (/api/mcp) is bearer-authed and must be skipped here.
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
