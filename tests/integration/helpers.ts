@@ -40,6 +40,31 @@ export function admin(): SupabaseClient {
   });
 }
 
+/**
+ * A Supabase client authenticated AS a specific user (their JWT), so human-plane
+ * RLS applies — used to verify the owner_user_id = auth.uid() policies actually
+ * deny cross-user access. Generates a session via the admin API.
+ */
+export async function userClient(userId: string): Promise<SupabaseClient> {
+  // Mint a session for the user by generating a magic link and exchanging the
+  // tokens isn't directly available; instead use admin to create a session via
+  // the auth admin "generate link" → not exposed. Simplest reliable path: sign
+  // the user in with a known password. We set one here via admin update.
+  const db = admin();
+  const { data: u } = await db.auth.admin.getUserById(userId);
+  const email = u.user?.email;
+  if (!email) throw new Error("user has no email");
+  const password = `Test-${userId}-pw!`;
+  await db.auth.admin.updateUserById(userId, { password });
+
+  const authed = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
+    auth: { persistSession: false },
+  });
+  const { error } = await authed.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(`user sign-in failed: ${error.message}`);
+  return authed;
+}
+
 export interface SeededTenant {
   userId: string;
   workspaceId: string;
