@@ -124,9 +124,42 @@ export async function touchLastSeen(ctx: AgentContext, nowMs: number = Date.now(
 // ── Operations ───────────────────────────────────────────────────────────────
 
 /**
+ * scopedProjectSubtree(ctx, projectId) — child tasks of a project the caller
+ * LEADS. The lead-ownership check is the gate (spec §3a): if the caller doesn't
+ * lead a kind='project' row with this id, returns 404 (notFound). This is the
+ * ONLY path that returns rows not assigned to the caller, and it stays confined:
+ * the project must be in ctx.workspaceId AND led by ctx.agentId.
+ */
+export async function scopedProjectSubtree(
+  ctx: AgentContext,
+  projectId: string
+): Promise<TaskRow[]> {
+  const { data: proj, error: pErr } = await db()
+    .from("tasks")
+    .select("id")
+    .eq("id", projectId)
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("kind", "project")
+    .eq("assigned_agent_id", ctx.agentId)
+    .maybeSingle();
+  if (pErr) throw badInput(pErr.message);
+  if (!proj) throw notFound();
+
+  const { data, error } = await db()
+    .from("tasks")
+    .select("*")
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("parent_id", projectId)
+    .order("updated_at", { ascending: false });
+  if (error) throw badInput(error.message);
+  return (data ?? []) as TaskRow[];
+}
+
+/**
  * list_my_tasks(status?, parentId?) — the agent's own tasks, optionally filtered
  * by status and/or parent. `parentId: null` returns only top-level tasks; a uuid
- * returns that parent's children (the agent's own subtree).
+ * returns that project's subtree (children regardless of assignee), gated by
+ * lead-ownership via scopedProjectSubtree (spec §3a/P6).
  */
 export async function listMyTasks(
   ctx: AgentContext,
@@ -139,7 +172,14 @@ export async function listMyTasks(
     q = q.eq("status", status);
   }
   if (parentId !== undefined) {
-    q = parentId === null ? q.is("parent_id", null) : q.eq("parent_id", parentId);
+    if (parentId === null) {
+      q = q.is("parent_id", null);
+    } else {
+      // A parent id means "this project's subtree" — gated by lead-ownership.
+      // Returns children regardless of assignee (spec §3a/P6).
+      const subtree = await scopedProjectSubtree(ctx, parentId);
+      return status === undefined ? subtree : subtree.filter((t) => t.status === status);
+    }
   }
   const { data, error } = await q;
   if (error) throw badInput(error.message);
