@@ -48,6 +48,7 @@ export interface TaskRow {
   workspace_id: string;
   assigned_agent_id: string;
   parent_id: string | null;
+  kind: "project" | "task";
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -239,6 +240,30 @@ export async function submitResult(
     result: output,
     sameStatus: true,
   });
+}
+
+export interface WorkspaceAgent {
+  id: string;
+  name: string;
+  prefix: string;
+  active: boolean;
+}
+
+/**
+ * list_agents() — the active agents in the caller's workspace, so a lead can name
+ * assignee ids when decomposing. Scoped by workspace_id (confinement: no path to
+ * agents outside ctx.workspaceId).
+ */
+export async function listAgents(ctx: AgentContext): Promise<WorkspaceAgent[]> {
+  const { data, error } = await db()
+    .from("agents")
+    .select("id, name, api_key_prefix, revoked_at")
+    .eq("workspace_id", ctx.workspaceId)
+    .order("created_at", { ascending: true });
+  if (error) throw badInput(error.message);
+  return (data ?? [])
+    .filter((a) => !a.revoked_at)
+    .map((a) => ({ id: a.id, name: a.name, prefix: a.api_key_prefix, active: true }));
 }
 
 // ── Shared transition application (calls the atomic RPC) ──────────────────────

@@ -28,4 +28,12 @@ d("first-class projects", () => {
       .is("assigned_agent_id", null);
     expect(count).toBe(1);
   });
+
+  it("listAgents returns active workspace agents, scoped", async () => {
+    const { listAgents } = await import("@/lib/agent-db");
+    const ctx = { agentId: lead.agentId, workspaceId: lead.workspaceId };
+    const agents = await listAgents(ctx);
+    expect(agents.some((a) => a.id === lead.agentId)).toBe(true);
+    expect(agents.every((a) => a.active)).toBe(true);
+  });
 });
