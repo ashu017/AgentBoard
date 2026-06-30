@@ -89,6 +89,7 @@ d("auth foundation (live DB)", () => {
       const clientA = await userClient(A.userId);
       const { error } = await clientA.from("tasks").insert({
         workspace_id: B.workspaceId,
+        kind: "project", // valid shape, so RLS WITH CHECK (not the kind CHECK) is what denies
         assigned_agent_id: B.agentId,
         title: "smuggled",
         status: "todo",

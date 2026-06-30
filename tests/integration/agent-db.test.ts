@@ -141,11 +141,17 @@ d("agent-db (live DB)", () => {
       );
     });
 
-    it("rejects a subtask of a subtask with 409 (depth-2 cap)", async () => {
+    it("rejects a subtask of a subtask (depth cap is now structural: a child is kind='task', never a project → 404)", async () => {
+      // Under first-class projects, the depth-2 cap is enforced by the kind model:
+      // only a kind='project' row can be a subtask parent (create_subtask RPC gates
+      // on kind='project'), and a child created here is kind='task'. So creating a
+      // grandchild under the child fails the project gate → notFound (404), not the
+      // old numeric depth-cap (409). Behavioral intent preserved: no third level.
       const parentId = await seedTask(A, { title: "A-depth", status: "in_progress" });
       const ctxA = await agentDb.resolveAgentByKey(A.token);
       const child = await agentDb.createSubtask(ctxA, parentId, "level-2");
-      await expect(agentDb.createSubtask(ctxA, child.id, "level-3")).rejects.toMatchObject({ code: 409 });
+      expect(child.kind).toBe("task");
+      await expect(agentDb.createSubtask(ctxA, child.id, "level-3")).rejects.toMatchObject({ code: 404 });
     });
 
     it("rejects an empty title with 400", async () => {

@@ -136,4 +136,38 @@ d("first-class projects", () => {
       createSubtask(leadCtx, proj!.id, "to revoked", undefined, revoked!.id)
     ).rejects.toMatchObject({ code: 404 });
   });
+
+  it("DB rejects a task with no parent, and a project with a parent", async () => {
+    const a = admin();
+    const noParent = await a.from("tasks").insert({
+      workspace_id: lead.workspaceId, kind: "task", assigned_agent_id: lead.agentId,
+      title: "orphan", status: "todo", created_by_user_id: lead.userId,
+    });
+    expect(noParent.error).toBeTruthy();
+
+    const { data: proj } = await a.from("tasks").insert({
+      workspace_id: lead.workspaceId, kind: "project", assigned_agent_id: lead.agentId,
+      title: "P", status: "todo", created_by_user_id: lead.userId,
+    }).select("id").single();
+    const projWithParent = await a.from("tasks").insert({
+      workspace_id: lead.workspaceId, kind: "project", parent_id: proj!.id,
+      title: "bad", status: "todo", created_by_user_id: lead.userId,
+    });
+    expect(projWithParent.error).toBeTruthy();
+  });
+
+  it("DB allows an unassigned project but rejects an unassigned task", async () => {
+    const a = admin();
+    const okProj = await a.from("tasks").insert({
+      workspace_id: lead.workspaceId, kind: "project", assigned_agent_id: null,
+      title: "unassigned proj", status: "todo", created_by_user_id: lead.userId,
+    }).select("id").single();
+    expect(okProj.error).toBeFalsy();
+
+    const badTask = await a.from("tasks").insert({
+      workspace_id: lead.workspaceId, kind: "task", parent_id: okProj.data!.id,
+      assigned_agent_id: null, title: "no agent", status: "todo", created_by_user_id: lead.userId,
+    });
+    expect(badTask.error).toBeTruthy();
+  });
 });
