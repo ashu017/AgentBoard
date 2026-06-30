@@ -1,6 +1,7 @@
 import "server-only";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { getOrCreateWorkspace, type Workspace } from "@/lib/workspace";
+import { getOrCreateMiscProject } from "@/lib/projects";
 import type { User } from "@supabase/supabase-js";
 
 // The authenticated-session layer. Resolves the current user and (idempotently)
@@ -30,5 +31,7 @@ export async function getSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) return null;
   const workspace = await getOrCreateWorkspace(supabase, data.user.id);
+  // Every workspace gets a Miscellaneous project (spec P3) — idempotent.
+  await getOrCreateMiscProject(supabase, workspace.id);
   return { user: data.user, workspace };
 }

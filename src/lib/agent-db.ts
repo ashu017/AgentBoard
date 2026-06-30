@@ -48,6 +48,7 @@ export interface TaskRow {
   workspace_id: string;
   assigned_agent_id: string;
   parent_id: string | null;
+  kind: "project" | "task";
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -123,9 +124,42 @@ export async function touchLastSeen(ctx: AgentContext, nowMs: number = Date.now(
 // ── Operations ───────────────────────────────────────────────────────────────
 
 /**
+ * scopedProjectSubtree(ctx, projectId) — child tasks of a project the caller
+ * LEADS. The lead-ownership check is the gate (spec §3a): if the caller doesn't
+ * lead a kind='project' row with this id, returns 404 (notFound). This is the
+ * ONLY path that returns rows not assigned to the caller, and it stays confined:
+ * the project must be in ctx.workspaceId AND led by ctx.agentId.
+ */
+export async function scopedProjectSubtree(
+  ctx: AgentContext,
+  projectId: string
+): Promise<TaskRow[]> {
+  const { data: proj, error: pErr } = await db()
+    .from("tasks")
+    .select("id")
+    .eq("id", projectId)
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("kind", "project")
+    .eq("assigned_agent_id", ctx.agentId)
+    .maybeSingle();
+  if (pErr) throw badInput(pErr.message);
+  if (!proj) throw notFound();
+
+  const { data, error } = await db()
+    .from("tasks")
+    .select("*")
+    .eq("workspace_id", ctx.workspaceId)
+    .eq("parent_id", projectId)
+    .order("updated_at", { ascending: false });
+  if (error) throw badInput(error.message);
+  return (data ?? []) as TaskRow[];
+}
+
+/**
  * list_my_tasks(status?, parentId?) — the agent's own tasks, optionally filtered
  * by status and/or parent. `parentId: null` returns only top-level tasks; a uuid
- * returns that parent's children (the agent's own subtree).
+ * returns that project's subtree (children regardless of assignee), gated by
+ * lead-ownership via scopedProjectSubtree (spec §3a/P6).
  */
 export async function listMyTasks(
   ctx: AgentContext,
@@ -138,7 +172,14 @@ export async function listMyTasks(
     q = q.eq("status", status);
   }
   if (parentId !== undefined) {
-    q = parentId === null ? q.is("parent_id", null) : q.eq("parent_id", parentId);
+    if (parentId === null) {
+      q = q.is("parent_id", null);
+    } else {
+      // A parent id means "this project's subtree" — gated by lead-ownership.
+      // Returns children regardless of assignee (spec §3a/P6).
+      const subtree = await scopedProjectSubtree(ctx, parentId);
+      return status === undefined ? subtree : subtree.filter((t) => t.status === status);
+    }
   }
   const { data, error } = await q;
   if (error) throw badInput(error.message);
@@ -146,16 +187,17 @@ export async function listMyTasks(
 }
 
 /**
- * create_subtask(parent_task_id, title, description?) — create a child task on a
- * task the agent owns. Atomic via the create_subtask RPC (depth-2 cap + insert +
- * `created` event in one txn). Parent not owned/absent → 404; parent already a
- * child → 409; empty title → 400. Child inherits the parent's workspace + agent.
+ * create_subtask(parent_task_id, title, description?, assignee_agent_id?) — create
+ * a child task under a PROJECT the agent leads (spec P4). The child is kind='task'.
+ * assignee defaults to the lead; if given it must be an active in-workspace agent.
+ * Parent not a led project → 404; bad assignee → 404; empty title → 400.
  */
 export async function createSubtask(
   ctx: AgentContext,
   parentTaskId: string,
   title: string,
-  description?: string
+  description?: string,
+  assigneeAgentId?: string
 ): Promise<TaskRow> {
   if (!parentTaskId) throw badInput("parent_task_id required");
   if (typeof title !== "string" || !title.trim()) throw badInput("title required");
@@ -167,18 +209,19 @@ export async function createSubtask(
     p_description: description?.trim() || null,
     p_actor_type: "agent",
     p_actor_id: ctx.agentId,
-    p_created_by: null, // agent-created → no human creator (FK would reject an agent id)
-    p_require_agent: ctx.agentId, // parent must be assigned to this agent
+    p_created_by: null,
+    p_require_agent: ctx.agentId, // parent must be a project this agent leads
+    p_assignee: assigneeAgentId || null,
   });
 
   if (error) throw badInput(error.message);
   const res = data as
     | { ok: true; task: TaskRow }
-    | { ok: false; reason: "not_found" | "depth_exceeded" };
+    | { ok: false; reason: "not_found" | "bad_assignee" };
 
   if (res.ok) return res.task;
-  if (res.reason === "not_found") throw notFound();
-  throw illegalTransition("Cannot add a subtask to a subtask (max depth is 2)");
+  // Both "parent not a led project" and "assignee not in workspace" → 404 (never 403).
+  throw notFound();
 }
 
 /** Fetch one scoped task or throw 404 (not 403). Used to validate transitions. */
@@ -239,6 +282,30 @@ export async function submitResult(
     result: output,
     sameStatus: true,
   });
+}
+
+export interface WorkspaceAgent {
+  id: string;
+  name: string;
+  prefix: string;
+  active: boolean;
+}
+
+/**
+ * list_agents() — the active agents in the caller's workspace, so a lead can name
+ * assignee ids when decomposing. Scoped by workspace_id (confinement: no path to
+ * agents outside ctx.workspaceId).
+ */
+export async function listAgents(ctx: AgentContext): Promise<WorkspaceAgent[]> {
+  const { data, error } = await db()
+    .from("agents")
+    .select("id, name, api_key_prefix, revoked_at")
+    .eq("workspace_id", ctx.workspaceId)
+    .order("created_at", { ascending: true });
+  if (error) throw badInput(error.message);
+  return (data ?? [])
+    .filter((a) => !a.revoked_at)
+    .map((a) => ({ id: a.id, name: a.name, prefix: a.api_key_prefix, active: true }));
 }
 
 // ── Shared transition application (calls the atomic RPC) ──────────────────────

@@ -117,16 +117,27 @@ export async function seedTenant(
   return { userId, workspaceId: ws.id, agentId: agent.id, token: key.token, hash: key.hash };
 }
 
-/** Create a task directly (manager action) for a tenant; returns its id. */
+/**
+ * Create a top-level work item directly (manager action) for a tenant; returns its id.
+ *
+ * Under the first-class-projects model, an agent's assignable top-level item is a
+ * PROJECT (kind='project', no parent, may be assigned to an agent and carries its own
+ * status). That shape satisfies the `tasks_kind_shape` CHECK, so all the existing
+ * status-transition / submit_result tests that seed "a task for the agent" keep working
+ * unchanged — semantically those rows are now projects. Pass kind:'task' (with a
+ * parent_id) only when a child task is explicitly needed.
+ */
 export async function seedTask(
   t: SeededTenant,
-  fields: { title: string; status?: string; description?: string }
+  fields: { title: string; status?: string; description?: string; kind?: string; parentId?: string | null }
 ): Promise<string> {
   const { data, error } = await admin()
     .from("tasks")
     .insert({
       workspace_id: t.workspaceId,
       assigned_agent_id: t.agentId,
+      kind: fields.kind ?? "project",
+      parent_id: fields.parentId ?? null,
       title: fields.title,
       description: fields.description ?? null,
       status: fields.status ?? "todo",
