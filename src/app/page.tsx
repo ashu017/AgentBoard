@@ -11,6 +11,7 @@ import {
 import { AgentBoardPixelHero } from "@/components/ui/animated-hero-section";
 import { HowItWorks } from "@/app/_components/HowItWorks";
 import { AboutSection } from "@/app/_components/AboutSection";
+import { GlassNav, GlassNavAnchor, GlassNavLink } from "@/app/_components/GlassNav";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -104,32 +105,27 @@ export default function LandingPage() {
       <JsonLd data={howToLd} />
       <JsonLd data={faqLd} />
 
-      {/* ── System bar / top nav ─────────────────────────────────────────── */}
-      <header className="border-b border-line bg-paper-2/70">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-2.5">
+      {/* ── System bar / floating glass-pill nav ─────────────────────────── */}
+      <header className="sticky top-0 z-20">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-3">
           <span className="mono text-xs uppercase tracking-[0.2em] text-orange">
             SYS:: AGENTBOARD
           </span>
-          <nav aria-label="Primary" className="flex items-center gap-1 text-sm">
-            <a href="#how-it-works" className="px-3 py-1.5 text-ink-soft hover:text-ink">
-              How it works
-            </a>
-            <a href="#about" className="px-3 py-1.5 text-ink-soft hover:text-ink">
-              About
-            </a>
-            <a href="#faq" className="px-3 py-1.5 text-ink-soft hover:text-ink">
-              FAQ
-            </a>
-            <Link href="/board" className="px-3 py-1.5 text-ink-soft hover:text-ink">
-              Go to board
-            </Link>
+          <div className="flex items-center gap-2">
+            <GlassNav ariaLabel="Primary">
+              <GlassNavAnchor href="#how-it-works" label="How it works" />
+              <GlassNavAnchor href="#about" label="About" />
+              <GlassNavAnchor href="#faq" label="FAQ" />
+              <GlassNavLink href="/board" label="Go to board" />
+            </GlassNav>
+            {/* Primary action stays a solid orange CTA, beside the pill. */}
             <Link
               href="/login"
-              className="ml-1 bg-orange px-3 py-1.5 font-medium text-paper"
+              className="rounded-full bg-orange px-4 py-1.5 text-sm font-medium text-paper shadow-sm transition-colors hover:bg-orange/90"
             >
               Sign in
             </Link>
-          </nav>
+          </div>
         </div>
       </header>
 
