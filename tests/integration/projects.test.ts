@@ -66,4 +66,23 @@ d("first-class projects", () => {
     const ag2Ctx = { agentId: ag2!.id, workspaceId: lead.workspaceId };
     await expect(listMyTasks(ag2Ctx, undefined, proj!.id)).rejects.toMatchObject({ code: 404 });
   });
+
+  it("passing a child task id as parentId returns 404 (no sibling leak)", async () => {
+    const a = admin();
+    const { data: proj } = await a.from("tasks")
+      .insert({ workspace_id: lead.workspaceId, kind: "project",
+                assigned_agent_id: lead.agentId, title: "Parent proj", status: "todo",
+                created_by_user_id: lead.userId })
+      .select("id").single();
+    const { data: child } = await a.from("tasks")
+      .insert({ workspace_id: lead.workspaceId, kind: "task", parent_id: proj!.id,
+                assigned_agent_id: lead.agentId, title: "a child", status: "todo",
+                created_by_user_id: lead.userId })
+      .select("id").single();
+
+    const { listMyTasks } = await import("@/lib/agent-db");
+    const leadCtx = { agentId: lead.agentId, workspaceId: lead.workspaceId };
+    // child.id is kind='task', so the project gate (kind='project') rejects it → 404.
+    await expect(listMyTasks(leadCtx, undefined, child!.id)).rejects.toMatchObject({ code: 404 });
+  });
 });
