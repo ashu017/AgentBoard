@@ -12,6 +12,7 @@ export function Modal({
   children,
   closeOnBackdrop = true,
   hideClose = false,
+  blurBackdrop = false,
   size = "md",
 }: {
   open: boolean;
@@ -22,6 +23,11 @@ export function Modal({
   closeOnBackdrop?: boolean;
   /** Hide the ✕ and ignore Esc — for required dialogs (e.g. sign-in). */
   hideClose?: boolean;
+  /**
+   * Frost the backdrop (dim + blur) so the modal reads as floating over the
+   * page behind it. Opt-in — defaults off so board/agents modals are unchanged.
+   */
+  blurBackdrop?: boolean;
   /** Panel width. "lg" for content-heavy dialogs (e.g. the key + MCP config). */
   size?: "md" | "lg";
 }) {
@@ -84,7 +90,7 @@ export function Modal({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-ink/40"
+        className={`absolute inset-0 bg-ink/40${blurBackdrop ? " backdrop-blur-sm" : ""}`}
         onClick={closeOnBackdrop ? onClose : undefined}
         aria-hidden="true"
       />
