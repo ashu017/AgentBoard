@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function BoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ window?: string; status?: string }>;
+  searchParams: Promise<{ window?: string; status?: string; project?: string }>;
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
