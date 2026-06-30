@@ -569,8 +569,10 @@ reopen the data model).
 Code subagents** that help build/test/launch AgentBoard (like the existing `spike-runner`),
 NOT AgentBoard product agents — though the dogfooding dream is to eventually run them
 *through* the board over MCP. Candidates, roughly by near-term value to this project:
-- **Testing agent** — Vitest + Playwright (UI / smoke / synthetic / backend); would own the
-  pending Phase 4 E2E work.
+- **Testing agent** — ✅ **created 2026-06-30** as `.claude/agents/test-runner.md`. Four
+  competencies (backend / frontend / smoke / synthetic) grounded in the project's Vitest +
+  live-Supabase + `/browse` stack; first big task is standing up Playwright for the pending
+  Phase 4 E2E (incl. the no-reload Realtime assertion + concurrent-transition guard).
 - **Development agent** — one dev agent that invokes existing engineering skills
   (`senior-frontend` / `senior-backend` / `senior-security` / architect) rather than
   bundling personas.
