@@ -1,6 +1,9 @@
 # Design: Hierarchical tasks (project → task) + agent-driven decomposition + board filters
 
-_Status: APPROVED (brainstorm) · 2026-06-30 · Future phase — spec only, not yet built._
+_Status: APPROVED (brainstorm) · 2026-06-30 · BUILT 2026-06-30, then **partly superseded
+2026-07-01** by `2026-06-30-first-class-projects-design.md` (P1–P7). H1→P1, H3→P4, H4→P5,
+H5→P4; H2's depth-2 *mechanism* → structural kind model (409→404); H6/H7/H8 still hold. See
+`docs/DECISIONS.md` → FIRST-CLASS PROJECTS (P1–P7)._
 
 ## Problem
 

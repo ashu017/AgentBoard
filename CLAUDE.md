@@ -42,9 +42,10 @@ in isolation, before any feature code:**
   in one shared module (`lib/task-status.ts`); the DB `CHECK`, MCP validators, UI, and
   tests all import it. Never redefine transitions per-layer.
 - **Agent DB access is confined:** all agent-plane queries go through one server-only
-  module (`lib/agent-db.ts`) on the service-role connection, behind a scoped-query wrapper
-  that *requires* `(workspace_id, agent_id)`. No raw/unscoped agent queries anywhere else.
-  Service-role never touches the human UI path.
+  module (`lib/agent-db.ts`) on the service-role connection, via **named scoped accessors**
+  only — the per-agent `scopedTasks()` (requires `(workspace_id, agent_id)`) and, for a
+  project lead, `scopedProjectSubtree()` (gated on lead-ownership; docs/DECISIONS.md P6). No
+  raw/unscoped agent queries anywhere else. Service-role never touches the human UI path.
 - **Human plane uses RLS** (`owner_user_id = auth.uid()`); agent plane uses app-code
   scoping in v1 (DB-enforced RLS for agents is deferred — docs/DECISIONS.md D-RLS-DEFER).
 - **Task writes are transactional** with their `task_events` append (one
@@ -73,6 +74,10 @@ with it. A decision that isn't written down didn't happen.
 
 ## Out of scope for v1 (don't build — see docs/DECISIONS.md + docs/design.md)
 
-Multi-user workspaces, DB-enforced agent RLS, pull/claim task pool, extra MCP tools,
-extra statuses, rate-limiting, published SDK, true mobile layout, optimistic UI,
-light+dark theming.
+Multi-user workspaces, DB-enforced agent RLS, pull/claim task pool, *further* MCP tools
+beyond the current set (`list_my_tasks`, `update_task_status`, `submit_result`,
+`create_subtask`, `list_agents`), extra statuses, rate-limiting, published SDK, true mobile
+layout, optimistic UI, light+dark theming.
+
+(Note: agents creating tasks and assigning across the fleet, and first-class projects, are
+**in scope and built** — see docs/DECISIONS.md → FIRST-CLASS PROJECTS P1–P7 and NEXT-1.)

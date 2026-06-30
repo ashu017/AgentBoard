@@ -566,8 +566,17 @@ live-region trap) isn't viewport-dependent.
 Captured for a future phase; no code/agent files created yet.
 
 ### NEXT-1 — Hierarchical tasks (project → task) + agent decomposition + board filters
-**Status:** ✅ **BUILT 2026-06-30** (was spec'd same day). Full design:
-`docs/superpowers/specs/2026-06-30-hierarchical-tasks-design.md`. In brief: single
+**Status:** ✅ **BUILT 2026-06-30** · **Partly superseded by FIRST-CLASS PROJECTS (P1–P7),
+2026-07-01** — see that section below. The build below stands as history; the
+project model it shipped (a "project" = an un-marked parent-less task with children;
+no lead agent; children inherit the parent's agent; depth-2 capped by a numeric
+app-code check returning 409) was reshaped by P1/P2/P4/P5 and the depth-cap-mechanism
+change. The decisions in the underlying spec
+(`docs/superpowers/specs/2026-06-30-hierarchical-tasks-design.md`): **H1 superseded by
+P1, H3 by P4, H4 by P5, H5 by P4; H2's depth-2 *mechanism* superseded by the structural
+kind model (see P1/P4 + DEPTH-CAP below); H6/H7/H8 still hold** (H6 kept by P7). Original
+build record (unchanged):
+Full design: `docs/superpowers/specs/2026-06-30-hierarchical-tasks-design.md`. In brief: single
 recursive `tasks` table (`parent_id`, depth-capped at 2, recursion-ready); a "project" is
 a parent-less task with children; humans **and** agents create child tasks (new
 `create_subtask` MCP tool); subagents stay internal to the agent runtime; agent owns parent
@@ -583,6 +592,98 @@ column with status dots + done-strikethrough + `N/M done` hint; filter bar via U
 (`?window=&status=`). Verified end-to-end in browser + a real MCP client (decomposition,
 depth-cap 409, filters hide/show done). 74 tests green (+7: create_subtask inherit/event/
 depth/empty/404 + parent-filter + cross-tenant subtask 404).
+
+### FIRST-CLASS PROJECTS (P1–P7) — projects are explicit rows, leads + cross-agent assignment
+**Status:** ✅ **BUILT 2026-07-01** (was spec'd 2026-06-30). Full design:
+`docs/superpowers/specs/2026-06-30-first-class-projects-design.md` (which builds on and
+supersedes parts of the hierarchical-tasks spec). This reshapes the NEXT-1 model: a project
+is now a first-class row (a `kind` discriminator), every task belongs to a project, projects
+can have a lead agent, and a lead can fan work out across the fleet. Decisions:
+
+#### P1 — Single recursive `tasks` table + a `kind` discriminator (`'project' | 'task'`)
+**Status:** Active · 2026-07-01 · **Supersedes H1**
+A project is an **explicit row** (`kind='project'`), not inferred from child count. One
+table, one status enum, one board renderer (the existing Approach A) — but "empty project"
+is now distinguishable from "standalone task". Migration `0008` adds the `kind` column +
+CHECK.
+**Why:** the hierarchical model (H1) treated a project as an *emergent* label — a
+parent-less task that happens to have children (`isProject = childTasks.length > 0`) — which
+can't express an empty project, an unassigned project, or a project as a real container.
+Marking it explicitly fixes all three with minimal schema surface.
+
+#### P2 — Every task belongs to a project; projects can be unassigned
+**Status:** Active · 2026-07-01
+DB CHECK `tasks_kind_shape`: `kind='project' ⟹ parent_id IS NULL`; `kind='task' ⟹ parent_id
+NOT NULL AND assigned_agent_id NOT NULL`. `assigned_agent_id` is made **nullable** (a project
+may be unassigned — e.g. Miscellaneous); the CHECK still forces every *task* to have a parent
+and an agent. Migration `0008`.
+**Why:** enforces "every task has a home" at the database, and lets a project exist as an
+ownerless catch-all container. No standalone parent-less task can exist anymore.
+
+#### P3 — One Miscellaneous project per workspace (default home for loose tasks)
+**Status:** Active · 2026-07-01
+Each workspace gets exactly one **Miscellaneous** project, seeded at workspace bootstrap
+(`getOrCreateWorkspace`, D2) and backfilled for existing workspaces, as the default home for
+work not yet organized into a named project. Uniqueness is **DB-enforced** via a partial
+unique index `tasks_one_misc_per_workspace` (migration `0010`).
+**Why:** a first-class default container means loose work always has a home (P2) without the
+manager having to create a project first; the partial unique index makes "exactly one" a DB
+invariant, not an app convention.
+
+#### P4 — Lead agent + cross-agent task assignment
+**Status:** Active · 2026-07-01 · **Supersedes H3 and H5**
+A project may have a **lead agent** (its `assigned_agent_id`). That lead can create tasks
+under the project (via `create_subtask`) and assign each to **any active agent in the same
+workspace** — not only itself. An unassigned project has no lead, so it can only be
+decomposed by a human in the UI (consistent with P2). `create_subtask` requires the parent be
+a `kind='project'` row the caller leads (else `404`); a supplied `assignee_agent_id` must be
+an active in-workspace agent (else `404`, never `403`, per the error contract). Migration
+`0009` updates the `create_subtask` RPC.
+**Why:** the user's model is *lead decomposes, work distributes across the fleet*. This
+reverses H3 (no privileged lead — every agent had identical capability) and H5 (children
+always inherited the parent's agent). D11 (directed assignment, no claim pool) still holds —
+the lead *directs* each task to a chosen agent; there is no shared pull pool.
+
+#### P5 — Agents can discover other agents via a new `list_agents` MCP tool
+**Status:** Active · 2026-07-01 · **Supersedes H4**
+A new workspace-scoped `list_agents()` MCP tool returns the caller's workspace agents
+(`id`, `name`, `prefix`, active flag), scoped by `workspace_id` from `AgentContext`.
+**Why:** a lead needs to name assignee IDs to distribute tasks (P4), so it must be able to
+discover the fleet. This reverses H4's "no agent-registration / no agent→agent assignment"
+stance — but only the *discovery* read is added; agents still cannot register agents.
+
+#### P6 — Lead can read its project's full subtree (confined, D8 preserved)
+**Status:** Active · 2026-07-01
+A lead can read its project's entire subtree (incl. tasks assigned to *other* agents) via
+`list_my_tasks(parent_task_id=…)`. This is enforced by a **second named, confined** accessor
+`scopedProjectSubtree(ctx, projectId)` gated on lead-ownership (caller's `agentId =` the
+project's `assigned_agent_id`, else `404`) — **not** by relaxing `scopedTasks()`. An agent
+still cannot read arbitrary tasks, only the subtree of a project it leads.
+**Why:** the lead must monitor/coordinate the project it owns without opening an unscoped
+read path. The strict per-agent confinement (D8 — no exported unscoped query) is **preserved**:
+two narrow named scoped accessors, the "no unscoped query" rule still holds.
+
+#### P7 — Project status is its own agent-updated value (no rollup engine)
+**Status:** Active · 2026-07-01 · **Keeps H6**
+A project's status is its own value, updated by its lead agent, sharing the one status enum
+and transition map in `lib/task-status.ts` (SSOT — no change to that module). No rollup
+engine derives project status from children; the `N/M done` board hint stays purely
+informational.
+**Why:** every row is the same kind of status machine and the lead stays in control —
+consistent with H6 (agent owns parent status, no rollup), which this carries forward.
+
+#### DEPTH-CAP — depth is now enforced structurally by the kind model (409 → 404)
+**Status:** Active · 2026-07-01 · **Supersedes the H2 *mechanism*** (depth-2 outcome retained)
+The old numeric depth-2 cap (an app-code check that returned **409** on "subtask of a
+subtask") is replaced. Depth is now enforced **structurally** by P1/P4: `create_subtask`
+requires the parent be `kind='project'`, and a child is always `kind='task'` (which can never
+itself be a parent). A third level therefore fails the *project gate* and returns **404
+(not_found)**, not 409.
+**Why:** H2 capped depth at 2 via a numeric app-code predicate (409 = illegal, like an
+out-of-terminal transition). The kind model makes the same depth-2 outcome a structural
+consequence of the schema rather than a hand-maintained check — so the *outcome* (no third
+level) is unchanged, but the *mechanism* and the *error code* changed (409 → 404, because a
+task simply isn't a valid project parent). Logged as part of P1/P4.
 
 ### NEXT-4 — Marketing landing page (SEO/AEO/GEO) + optimization agent
 **Status:** ✅ **BUILT 2026-06-30** (parallel worktrees: landing page + `seo-optimizer` agent,
