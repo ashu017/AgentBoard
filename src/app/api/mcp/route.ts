@@ -8,6 +8,7 @@ import {
   updateTaskStatus,
   submitResult,
   createSubtask,
+  listAgents,
   type AgentContext,
 } from "@/lib/agent-db";
 import { AgentError } from "@/lib/agent-errors";
@@ -42,7 +43,7 @@ const SERVER_INSTRUCTIONS = `You are connected to AgentBoard, a task board your 
 Keep your assigned tasks up to date as you work — your manager is watching the board:
 - Call list_my_tasks to see what's assigned to you (optionally filter by status, or by parent_task_id to see a project's subtasks).
 - When you START a task, move it to in_progress (update_task_status).
-- If a task is a broad project, break it down with create_subtask, then work each subtask (you may run your own internal subagents to do them in parallel — AgentBoard only needs the task updates).
+- If you've been assigned a PROJECT, break it into tasks with create_subtask (call list_agents first if you want to delegate a subtask to another agent; otherwise it's assigned to you). Then work each task. You can read your whole project's progress with list_my_tasks(parent_task_id=<project id>), including tasks you delegated.
 - When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work).
 - If you need a human to review before continuing, set status to in_review.
 Update promptly and honestly — a stale or wrong status misleads the person relying on this board.`;
@@ -94,18 +95,38 @@ const baseHandler = createMcpHandler(
 
     server.tool(
       "create_subtask",
-      "Break a task you own into a child task (e.g. decompose a project). The subtask is assigned to you and starts as 'todo'. Max nesting depth is 2.",
+      "Break a PROJECT you lead into a child task. Defaults to assigning the subtask to you; pass assignee_agent_id to delegate to another agent in your workspace. The subtask starts as 'todo'.",
       {
         parent_task_id: z.string().min(1).describe("The task to add a subtask under (must be assigned to you, and not itself a subtask)"),
         title: z.string().min(1).describe("Subtask title"),
         description: z.string().max(4000).optional().describe("Optional detail"),
+        assignee_agent_id: z
+          .string()
+          .optional()
+          .describe("Assign the subtask to this agent (from list_agents). Defaults to you, the project lead. Must be an active agent in your workspace."),
       },
-      async ({ parent_task_id, title, description }, extra) => {
+      async ({ parent_task_id, title, description, assignee_agent_id }, extra) => {
         try {
           const ctx = ctxFrom(extra);
           await touchLastSeen(ctx);
-          const task = await createSubtask(ctx, parent_task_id, title, description);
+          const task = await createSubtask(ctx, parent_task_id, title, description, assignee_agent_id);
           return ok({ task });
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
+      "list_agents",
+      "List the active agents in your workspace (id, name, prefix). Use this to find an agent id to assign a subtask to via create_subtask.",
+      {},
+      async (_args, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const agents = await listAgents(ctx);
+          return ok({ agents });
         } catch (err) {
           return toolError(err);
         }
