@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   // `next` lets us return the user where they started; default to the board.
-  const next = searchParams.get("next") ?? "/";
+  const next = searchParams.get("next") ?? "/board";
 
   if (code) {
     const supabase = await createServerSupabase();

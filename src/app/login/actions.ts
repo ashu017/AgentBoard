@@ -48,7 +48,7 @@ export async function devLogin(): Promise<void> {
   });
   if (error) throw new Error(`dev login failed: ${error.message}`);
 
-  redirect("/");
+  redirect("/board");
 }
 
 export async function signOut(): Promise<void> {

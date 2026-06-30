@@ -10,7 +10,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  if (await getCurrentUser()) redirect("/");
+  if (await getCurrentUser()) redirect("/board");
   const { error } = await searchParams;
   return <LoginClient devEnabled={devLoginEnabled()} oauthError={error === "oauth"} />;
 }
