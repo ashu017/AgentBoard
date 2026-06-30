@@ -175,9 +175,9 @@ export async function createTask(
 
 /**
  * Add a child task under a project the manager owns (human decomposition). The
- * child inherits the parent's workspace + assigned agent, starts `todo`. Depth
- * is capped at 2: the parent must itself be top-level (parent_id IS NULL). Runs
- * under the user's RLS session (parent lookup already scoped to the workspace).
+ * parent must be a project (subtasks live under projects). The child inherits the
+ * parent's workspace + assigned agent, starts `todo`. Runs under the user's RLS
+ * session (parent lookup already scoped to the workspace).
  */
 export async function createChildTask(
   parentTaskId: string,
@@ -281,8 +281,11 @@ export async function createProject(
   if (error) throw new Error(`create project failed: ${error.message}`);
 
   const { error: evErr } = await supabase.from("task_events").insert({
-    task_id: project.id, actor_type: "user", actor_id: session.user.id,
-    event_type: "created", to_status: INITIAL_STATUS,
+    task_id: project.id,
+    actor_type: "user",
+    actor_id: session.user.id,
+    event_type: "created",
+    to_status: INITIAL_STATUS,
   });
   if (evErr) {
     await supabase.from("tasks").delete().eq("id", project.id);
