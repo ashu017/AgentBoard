@@ -115,4 +115,25 @@ d("first-class projects", () => {
       await teardownTenant(foreign);
     }
   });
+
+  it("create_subtask to a revoked in-workspace agent → 404", async () => {
+    const a = admin();
+    const { data: proj } = await a.from("tasks")
+      .insert({ workspace_id: lead.workspaceId, kind: "project",
+                assigned_agent_id: lead.agentId, title: "Proj R", status: "todo",
+                created_by_user_id: lead.userId })
+      .select("id").single();
+    // A revoked agent in the SAME workspace.
+    const { data: revoked } = await a.from("agents")
+      .insert({ workspace_id: lead.workspaceId, name: "revoked-ag",
+                api_key_hash: generateApiKey().hash, api_key_prefix: "rrrr3333",
+                revoked_at: new Date().toISOString() })
+      .select("id").single();
+
+    const { createSubtask } = await import("@/lib/agent-db");
+    const leadCtx = { agentId: lead.agentId, workspaceId: lead.workspaceId };
+    await expect(
+      createSubtask(leadCtx, proj!.id, "to revoked", undefined, revoked!.id)
+    ).rejects.toMatchObject({ code: 404 });
+  });
 });
