@@ -31,6 +31,8 @@ export async function getOrCreateMiscProject(
   if (existing.error) throw new Error(`misc lookup failed: ${existing.error.message}`);
   if (existing.data) return existing.data as ProjectRow;
 
+  // Insert. The tasks_one_misc_per_workspace partial unique index makes this
+  // safe under a race.
   const created = await supabase
     .from("tasks")
     .insert({ workspace_id: workspaceId, title: MISC_TITLE, kind: "project", status: "todo" })
@@ -38,15 +40,19 @@ export async function getOrCreateMiscProject(
     .maybeSingle();
   if (created.data) return created.data as ProjectRow;
 
-  // Lost a race: read back.
-  const retry = await supabase
-    .from("tasks")
-    .select("id, workspace_id, title, kind, assigned_agent_id")
-    .eq("workspace_id", workspaceId)
-    .eq("kind", "project")
-    .eq("title", MISC_TITLE)
-    .is("parent_id", null)
-    .maybeSingle();
-  if (retry.data) return retry.data as ProjectRow;
-  throw new Error(`misc create failed: ${created.error?.message ?? "no row"}`);
+  // Lost the race (unique-index conflict): read back the winner.
+  if (created.error) {
+    const retry = await supabase
+      .from("tasks")
+      .select("id, workspace_id, title, kind, assigned_agent_id")
+      .eq("workspace_id", workspaceId)
+      .eq("kind", "project")
+      .eq("title", MISC_TITLE)
+      .is("parent_id", null)
+      .maybeSingle();
+    if (retry.data) return retry.data as ProjectRow;
+    throw new Error(`misc create failed: ${created.error.message}`);
+  }
+
+  throw new Error("misc create returned no row");
 }

@@ -18,6 +18,7 @@ d("first-class projects", () => {
     const b = await getOrCreateMiscProject(admin(), lead.workspaceId);
     expect(a.id).toBe(b.id);
     expect(a.kind).toBe("project");
+    expect(a.assigned_agent_id).toBeNull();
 
     const { count } = await admin()
       .from("tasks")
