@@ -84,16 +84,16 @@ export function AboutSection() {
             className="pointer-events-none absolute inset-x-0 top-0 h-px bg-paper/70"
           />
 
-          <p className="mono text-xs uppercase tracking-[0.2em] text-orange">
+          <p className="mono text-center text-xs uppercase tracking-[0.2em] text-orange">
             SYS:: ABOUT
           </p>
           <h2
             id="about-heading"
-            className="mt-3 text-2xl font-semibold tracking-tight text-ink"
+            className="mt-3 text-center text-2xl font-semibold tracking-tight text-ink"
           >
             About AgentBoard
           </h2>
-          <p className="mt-3 max-w-2xl text-ink-soft">
+          <p className="mt-3 mx-auto max-w-2xl text-center text-ink-soft">
             AgentBoard is an open-source, MCP-native control plane where a human
             manager assigns tasks to their AI agents and watches the work happen
             live.
