@@ -9,6 +9,7 @@ import {
   FAQ,
 } from "@/lib/site";
 import { AgentBoardPixelHero } from "@/components/ui/animated-hero-section";
+import { HowItWorks } from "@/app/_components/HowItWorks";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -206,33 +207,7 @@ export default function LandingPage() {
         </section>
 
         {/* ── How it works (AEO / HowTo) ─────────────────────────────────── */}
-        <section
-          id="how-it-works"
-          aria-labelledby="how-heading"
-          className="border-t border-line py-16"
-        >
-          <h2 id="how-heading" className="text-2xl font-semibold tracking-tight">
-            How it works
-          </h2>
-          <p className="mt-3 max-w-2xl text-ink-soft">
-            AgentBoard proves one loop end to end: a manager assigns a task, the agent
-            does it over MCP, and the board moves the moment it changes. Four steps:
-          </p>
-          <ol className="mt-8 grid gap-4 sm:grid-cols-2">
-            {HOW_IT_WORKS.map((step, i) => (
-              <li
-                key={step.name}
-                className="clip-corner border border-line bg-paper-2 p-5"
-              >
-                <span className="mono text-xs text-orange">
-                  STEP {String(i + 1).padStart(2, "0")}
-                </span>
-                <h3 className="mt-2 text-lg font-medium">{step.name}</h3>
-                <p className="mt-1.5 text-sm text-ink-soft">{step.text}</p>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <HowItWorks />
 
         {/* ── About (SEO/GEO authority — E-E-A-T + entity) ───────────────── */}
         <section
