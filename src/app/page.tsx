@@ -220,10 +220,12 @@ export default function LandingPage() {
           aria-labelledby="faq-heading"
           className="border-t border-line py-16"
         >
-          <h2 id="faq-heading" className="text-2xl font-semibold tracking-tight">
+          <h2 id="faq-heading" className="text-center text-2xl font-semibold tracking-tight">
             Frequently asked questions
           </h2>
-          <div className="mt-8 max-w-3xl divide-y divide-line border-y border-line">
+          {/* Heading centered; accordion block centered (mx-auto) but Q/A text stays
+              left-aligned — centered accordion rows with a right-side toggle read poorly. */}
+          <div className="mx-auto mt-8 max-w-3xl divide-y divide-line border-y border-line">
             {FAQ.map((item) => (
               <details key={item.q} className="group py-4">
                 <summary className="flex cursor-pointer items-center justify-between gap-4 text-base font-medium marker:content-['']">
@@ -235,7 +237,7 @@ export default function LandingPage() {
                     +
                   </span>
                 </summary>
-                <p className="mt-2 max-w-2xl text-sm text-ink-soft">{item.a}</p>
+                <p className="mt-2 text-sm text-ink-soft">{item.a}</p>
               </details>
             ))}
           </div>
