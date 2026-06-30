@@ -72,6 +72,32 @@ plane, not "task board") and what we build *next* (approvals, results-as-artifac
 liveness/escalation — not more board polish) both point at the moat. See the
 "Open / unvalidated risks" section for the differentiation risk this is still exposed to.
 
+### BIZ — Open source now; business model deferred; license = MIT (revisit before traction)
+**Status:** Active · 2026-06-30
+AgentBoard stays **open source (MIT)** and we **defer any business model** until the core
+demand bet is validated. Open source is treated as the **go-to-market wedge**, not the
+opposite of a business — for a developer/agent-native tool it's the cheapest path to the
+"paste this MCP config" adoption any future business would be built on, and it's load-
+bearing for the moat (POSITION: "OSS/self-host + MCP-native … a seats-and-cloud-lock-in
+incumbent structurally won't match").
+**Why now / sequencing:** demand is still unproven (see "Open / unvalidated risks" →
+Demand). The bottleneck is distribution + proof, not monetization; there's nothing to price
+yet. Goal locked: **prove demand first** (get it in front of real agent-runners), then decide.
+**The eventual model, when it comes, is open-core** (Supabase/GitLab/Sentry pattern): core
+stays MIT + self-hostable; charge for what teams won't self-host — hosted/managed cloud
+(the deferred multi-user workspaces + DB-enforced agent RLS in design.md Appendix A is
+literally that v2 trajectory) and team features (orgs/roles/SSO/audit, approvals at scale).
+Not built now; just not foreclosed by the architecture (it isn't).
+**The one hard-to-reverse lever — license.** MIT is maximally permissive: anyone, incl. a
+cloud vendor, can host it commercially with no give-back. A future hosted-cloud business
+would want **AGPL or source-available (BSL/Elastic)** instead — still open + self-hostable,
+but a competitor can't run it as closed SaaS. You can relicense *future* code but **cannot
+claw back what's already shipped under MIT**, so this must be reconsidered **before**
+meaningful adoption/contributors arrive. **Decision: stay MIT for now, flagged as a live
+decision to revisit the moment real traction looks plausible** (esp. if commercialization
+becomes a goal). Revisit triggers: (a) goal shifts from "prove demand" to "build a
+business", or (b) adoption starts before that conversation happens.
+
 ### MODE — Scope reduction to one loop
 **Status:** Active · 2026-06-26
 The MVP is cut to the thinnest slice that proves one end-to-end loop (login → create →
