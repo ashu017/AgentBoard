@@ -1,28 +1,32 @@
 "use client";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "@/app/_components/Modal";
 import { devLogin, signInWithGitHub } from "./actions";
 
-// Sign-in presented as a modal over the operator-console backdrop (matches the
-// Figma reference's modal pattern). The modal is open by default on /login and
-// non-dismissable (closing just reopens) — there's nothing behind it to use.
+// Sign-in presented as a dismissable modal floating over a blurred snapshot of
+// the operator console (matches the Figma reference's modal pattern). The
+// landing page (/) is the natural surface behind it, so closing the modal —
+// via the ✕, a backdrop click, or Esc — returns the visitor there rather than
+// trapping them on a dead-end screen.
 export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; oauthError?: boolean }) {
-  const [open, setOpen] = useState(true);
+  const router = useRouter();
+  const dismiss = () => router.push("/");
 
   return (
     <>
-      {/* Dim operator backdrop behind the modal. */}
-      <div className="flex min-h-full items-center justify-center">
+      {/* Blurred operator-console backdrop so the modal reads as floating over
+          the page, not as a standalone screen. The Modal's own frosted backdrop
+          (blurBackdrop) dims + blurs this further. */}
+      <div aria-hidden="true" className="pointer-events-none flex min-h-full items-center justify-center blur-sm">
         <div className="mono text-xs uppercase tracking-[0.3em] text-ink-soft/50">SYS:: AGENTBOARD</div>
       </div>
 
       <Modal
-        open={open}
-        onClose={() => setOpen(true)} // sign-in is required; can't dismiss past it
+        open
+        onClose={dismiss} // dismissing returns to the landing page
         title="Sign in"
         systemTag="SYS:: AGENTBOARD"
-        closeOnBackdrop={false}
-        hideClose
+        blurBackdrop
       >
         <p className="text-sm text-ink-soft">
           The human-in-the-loop control plane for a fleet of AI agents.
