@@ -558,6 +558,18 @@ column with status dots + done-strikethrough + `N/M done` hint; filter bar via U
 depth-cap 409, filters hide/show done). 74 tests green (+7: create_subtask inherit/event/
 depth/empty/404 + parent-filter + cross-tenant subtask 404).
 
+### NEXT-4 — Marketing landing page (SEO/AEO/GEO) + optimization agent
+**Status:** Spec'd 2026-06-30 · not built. Full design:
+`docs/superpowers/specs/2026-06-30-landing-page-design.md`. In brief: public landing at
+`/` in the warm operator-console aesthetic (Hero · How it works · About · FAQ · Footer),
+each section carrying an SEO/AEO/GEO payload (Organization/HowTo/FAQPage JSON-LD, sitemap +
+robots, static render). **Routing change:** the app moves `/`→`/board`, `/agents`→
+`/board/agents` (root must be the indexable marketing page); OAuth post-login target
+becomes `/board`. Plus a build-time `seo-optimizer` Claude Code subagent that audits/scores
+the page for search, answer-engine, and generative-engine discoverability. Login flow
+unchanged. Note: the `/`→`/board` move is cross-cutting (Shell nav, board CTA, filter
+hrefs, callback `next`) — do in one pass.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed
