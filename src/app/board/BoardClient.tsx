@@ -1,5 +1,5 @@
 "use client";
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { STATUSES, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
@@ -342,15 +342,25 @@ function TaskCard({
 
 function NewMenu({ onProject, onTask }: { onProject: () => void; onTask: () => void }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((v) => !v)} className="bg-orange px-3 py-1.5 text-sm font-medium text-paper">
-        + New ▾
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}
+              className="bg-orange px-3 py-1.5 text-sm font-medium text-paper">
+        + New <span aria-hidden="true">▾</span>
       </button>
       {open && (
-        <div className="absolute right-0 z-10 mt-1 w-36 border border-line bg-paper text-sm shadow">
-          <button onClick={() => { setOpen(false); onProject(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Project</button>
-          <button onClick={() => { setOpen(false); onTask(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Task</button>
+        <div role="menu" className="absolute right-0 z-10 mt-1 w-36 border border-line bg-paper text-sm shadow">
+          <button role="menuitem" onClick={() => { setOpen(false); onProject(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Project</button>
+          <button role="menuitem" onClick={() => { setOpen(false); onTask(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Task</button>
         </div>
       )}
     </div>
@@ -397,7 +407,7 @@ function NewTaskPanel({ agents, projects, onDone }: { agents: AgentRow[]; projec
   return (
     <form action={formAction}>
       <div className="grid gap-3">
-        <select name="projectId" defaultValue={projects[0]?.id ?? ""} className="border border-line bg-paper px-3 py-2 text-sm">
+        <select name="projectId" aria-label="Project" defaultValue={projects[0]?.id ?? ""} className="border border-line bg-paper px-3 py-2 text-sm">
           {projects.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
         </select>
         <input name="title" required placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
