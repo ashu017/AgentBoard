@@ -28,15 +28,18 @@ export function HowItWorks() {
       />
 
       <div className="relative">
-        <h2 id="how-heading" className="text-2xl font-semibold tracking-tight">
+        <h2
+          id="how-heading"
+          className="text-center text-2xl font-semibold tracking-tight"
+        >
           How it works
         </h2>
-        <p className="mt-3 max-w-2xl text-ink-soft">
+        <p className="mx-auto mt-3 max-w-2xl text-center text-ink-soft">
           AgentBoard proves one loop end to end: a manager assigns a task, the agent
           does it over MCP, and the board moves the moment it changes. Four steps:
         </p>
 
-        <ol className="mt-8 grid gap-4 sm:grid-cols-2">
+        <ol className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2">
           {HOW_IT_WORKS.map((step, i) => (
             <li
               key={step.name}
