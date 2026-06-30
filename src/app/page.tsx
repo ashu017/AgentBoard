@@ -8,6 +8,7 @@ import {
   HOW_IT_WORKS,
   FAQ,
 } from "@/lib/site";
+import { AgentBoardPixelHero } from "@/components/ui/animated-hero-section";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -161,10 +162,19 @@ export default function LandingPage() {
             </a>
           </div>
 
+          {/* Animated operator-console hero: a contained, decorative pixel-Pong
+              canvas spelling AGENTBOARD on the paper surface. Decorative only —
+              the real <h1> above is the accessible/SEO heading. */}
+          <div className="clip-corner mt-12 border border-line bg-paper p-1.5">
+            <div className="relative h-[360px] w-full sm:h-[440px]">
+              <AgentBoardPixelHero />
+            </div>
+          </div>
+
           {/* Calm operator-console visual: a static board-preview strip. */}
           <div
             aria-hidden="true"
-            className="clip-corner mt-12 border border-line bg-paper-2 p-4"
+            className="clip-corner mt-4 border border-line bg-paper-2 p-4"
           >
             <div className="mono flex items-center gap-3 text-xs text-ink-soft">
               <span className="text-st-done">● LIVE</span>
