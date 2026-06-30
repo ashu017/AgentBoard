@@ -559,7 +559,8 @@ depth-cap 409, filters hide/show done). 74 tests green (+7: create_subtask inher
 depth/empty/404 + parent-filter + cross-tenant subtask 404).
 
 ### NEXT-4 — Marketing landing page (SEO/AEO/GEO) + optimization agent
-**Status:** Spec'd 2026-06-30 · not built. Full design:
+**Status:** ✅ **BUILT 2026-06-30** (parallel worktrees: landing page + `seo-optimizer` agent,
+merged). Full design:
 `docs/superpowers/specs/2026-06-30-landing-page-design.md`. In brief: public landing at
 `/` in the warm operator-console aesthetic (Hero · How it works · About · FAQ · Footer),
 each section carrying an SEO/AEO/GEO payload (Organization/HowTo/FAQPage JSON-LD, sitemap +
@@ -569,6 +570,20 @@ becomes `/board`. Plus a build-time `seo-optimizer` Claude Code subagent that au
 the page for search, answer-engine, and generative-engine discoverability. Login flow
 unchanged. Note: the `/`→`/board` move is cross-cutting (Shell nav, board CTA, filter
 hrefs, callback `next`) — do in one pass.
+**Built (two parallel worktrees):** landing page at `/` (`src/app/page.tsx`, static; Hero
+with extractable definition + single H1, How it works, About, FAQ via native `<details>`,
+Footer; `src/lib/site.ts` is the content SSOT so visible copy and JSON-LD can't drift;
+Organization/WebSite/HowTo/FAQPage JSON-LD; `sitemap.ts` + `robots.ts` with /board,/login,
+/api,/auth disallowed). Routing moved `/`→`/board`, `/agents`→`/board/agents` (Shell nav,
+filter hrefs, revalidatePath, OAuth callback `next`, dev-login + login redirects all
+updated; logged-in `/` shows landing + "Go to board", no forced redirect). And
+`.claude/agents/seo-optimizer.md` + `.claude/skills/{seo-audit,content-optimize}/SKILL.md`
+(build-time discoverability agent, PERCEIVE→ANALYZE→VALIDATE→ACT + falsifiability; inspired
+by github.com/AgricIDaniel/claude-seo). Integrated on main: tsc/lint/build clean, route
+shape correct (`/` static, `/sitemap.xml`+`/robots.txt` static, `/board*` dynamic), 74
+tests green. **Open:** real OG image (TODO in metadata); `SITE_ORIGIN` falls back to
+`https://agentboard.dev` when `NEXT_PUBLIC_APP_ORIGIN` unset — confirm the public domain;
+copy worth a seo-optimizer audit pass before launch.
 
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
