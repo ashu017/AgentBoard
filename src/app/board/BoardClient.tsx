@@ -3,7 +3,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { STATUSES, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
-import { createTaskAction, createChildTaskAction, createProjectAction, type ActionResult } from "@/app/actions";
+import { createTaskAction, createProjectAction, type ActionResult } from "@/app/actions";
 import type { BoardTask, AgentRow, BoardFilters, TimeWindow, StatusFilter, ProjectOption } from "@/lib/manager-queries";
 import type { CreatedProject } from "@/lib/manager-actions";
 import { Modal } from "@/app/_components/Modal";
@@ -41,12 +41,13 @@ export function BoardClient({
   const [showNew, setShowNew] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [addAgent, setAddAgent] = useState(false);
-  const [subtaskParent, setSubtaskParent] = useState<BoardTask | null>(null);
+  // When set, the New Task modal opens pre-scoped to this project (lane "+ task").
+  const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   // Live board: subscribe to tasks changes, refetch snapshot on each (D9 pattern).
-  // Note: the live refetch pulls recent tasks (incl. parent_id for grouping); the
-  // server render is the source of truth for the filtered view on load/navigation.
+  // Note: the live refetch pulls recent tasks (incl. parent_id/kind for grouping);
+  // the server render is the source of truth for the filtered view on load/nav.
   useEffect(() => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
@@ -72,8 +73,10 @@ export function BoardClient({
     return () => void supabase.removeChannel(channel);
   }, []);
 
-  // Partition into top-level items and children grouped by parent.
-  const { topLevel, childrenByParent } = useMemo(() => {
+  // Split into lanes (top-level projects) and their child tasks grouped by parent.
+  // A standalone top-level row that is NOT a project (legacy/edge) still renders as
+  // its own single-card lane so nothing is ever hidden.
+  const { lanes, childrenByParent } = useMemo(() => {
     const children = new Map<string, BoardTask[]>();
     const top: BoardTask[] = [];
     for (const t of tasks) {
@@ -85,21 +88,28 @@ export function BoardClient({
         top.push(t);
       }
     }
-    return { topLevel: top, childrenByParent: children };
+    return { lanes: top, childrenByParent: children };
   }, [tasks]);
 
-  // Column counts + summary are over TOP-LEVEL items (what renders in columns).
+  // Scan summary counts the CHILD TASKS across all visible lanes (the actual work),
+  // not the project rows themselves.
+  const allChildren = useMemo(() => [...childrenByParent.values()].flat(), [childrenByParent]);
   const counts = Object.fromEntries(
-    STATUSES.map((s) => [s, topLevel.filter((t) => t.status === s).length])
+    STATUSES.map((s) => [s, allChildren.filter((t) => t.status === s).length])
   ) as Record<TaskStatus, number>;
   const hasFailed = counts.failed > 0;
   const noAgents = agents.length === 0;
+
+  const openTaskForProject = (projectId: string) => {
+    setTaskProjectId(projectId);
+    setShowNew(true);
+  };
 
   return (
     <main className="p-5">
       <div aria-live="polite" className="sr-only">{announce}</div>
 
-      {/* Scan summary line + New task */}
+      {/* Scan summary line + New menu */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="mono flex items-center gap-3 text-xs">
           <span className={live ? "text-st-done" : "text-ink-soft"}>{live ? "● LIVE" : "○ connecting"}</span>
@@ -112,12 +122,12 @@ export function BoardClient({
         </div>
         <NewMenu
           onProject={() => setShowNewProject(true)}
-          onTask={() => setShowNew(true)}
+          onTask={() => { setTaskProjectId(null); setShowNew(true); }}
         />
       </div>
 
       {/* Filter bar (URL params, shareable). Anchors → server re-renders filtered. */}
-      <FilterBar filters={filters} />
+      <FilterBar filters={filters} projects={projects} />
 
       {noAgents && (
         <div className="clip-corner mt-4 border border-dashed border-line p-8 text-center">
@@ -151,7 +161,12 @@ export function BoardClient({
             </div>
           </div>
         ) : (
-          <NewTaskPanel agents={agents} projects={projects} onDone={() => setShowNew(false)} />
+          <NewTaskPanel
+            agents={agents}
+            projects={projects}
+            defaultProjectId={taskProjectId ?? undefined}
+            onDone={() => setShowNew(false)}
+          />
         )}
       </Modal>
 
@@ -165,29 +180,22 @@ export function BoardClient({
         <NewProjectPanel agents={agents} onDone={() => setShowNewProject(false)} />
       </Modal>
 
-      {/* Human "add subtask" to a project (decomposition, human path). */}
-      <Modal
-        open={Boolean(subtaskParent)}
-        onClose={() => setSubtaskParent(null)}
-        title={subtaskParent ? `Subtask of "${subtaskParent.title}"` : "Subtask"}
-        systemTag="SYS:: DECOMPOSE"
-        blurBackdrop
-      >
-        {subtaskParent && <AddSubtaskPanel parent={subtaskParent} onDone={() => setSubtaskParent(null)} />}
-      </Modal>
+      {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 projects.</p>}
 
-      {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 top-level items.</p>}
-
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {STATUSES.map((status) => (
-          <Column
-            key={status}
-            status={status}
-            tasks={topLevel.filter((t) => t.status === status)}
-            childrenByParent={childrenByParent}
+      {/* Swimlanes: one lane per project (LANES-1). */}
+      <div className="mt-4 space-y-4">
+        {lanes.length === 0 && (
+          <p className="clip-corner border border-dashed border-line p-8 text-center text-sm text-ink-soft">
+            No projects match these filters.
+          </p>
+        )}
+        {lanes.map((project) => (
+          <ProjectLane
+            key={project.id}
+            project={project}
+            tasks={childrenByParent.get(project.id) ?? []}
             agents={agentMap}
-            noAgents={noAgents}
-            onAddSubtask={setSubtaskParent}
+            onAddTask={() => openTaskForProject(project.id)}
           />
         ))}
       </div>
@@ -195,16 +203,30 @@ export function BoardClient({
   );
 }
 
-function FilterBar({ filters }: { filters: BoardFilters }) {
+function FilterBar({ filters, projects }: { filters: BoardFilters; projects: ProjectOption[] }) {
   const windows: TimeWindow[] = ["2w", "30d", "90d", "all"];
   const statuses: StatusFilter[] = ["active", "all"];
   const href = (next: Partial<BoardFilters>) => {
     const w = next.window ?? filters.window;
     const s = next.status ?? filters.status;
-    return `/board?window=${w}&status=${s}`;
+    const p = next.project ?? filters.project;
+    return `/board?window=${w}&status=${s}&project=${encodeURIComponent(p)}`;
   };
   return (
     <div className="mono mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
+      <div className="flex items-center gap-1">
+        <span className="uppercase tracking-widest text-ink-soft">project</span>
+        {/* Server re-render on change: navigate to the project-scoped URL. */}
+        <select
+          aria-label="Filter by project"
+          value={filters.project}
+          onChange={(e) => { window.location.href = href({ project: e.target.value }); }}
+          className="border border-line bg-paper px-2 py-0.5 text-[11px]"
+        >
+          <option value="all">All projects</option>
+          {projects.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
+        </select>
+      </div>
       <div className="flex items-center gap-1">
         <span className="uppercase tracking-widest text-ink-soft">window</span>
         {windows.map((w) => (
@@ -227,51 +249,82 @@ function FilterBar({ filters }: { filters: BoardFilters }) {
   );
 }
 
-function Column({
-  status,
+/**
+ * A project swimlane: a header (project title, status, lead agent, N/M done, + task)
+ * and a row of the status columns holding THIS project's tasks (LANES-1).
+ */
+function ProjectLane({
+  project,
   tasks,
-  childrenByParent,
   agents,
-  noAgents,
-  onAddSubtask,
+  onAddTask,
 }: {
-  status: TaskStatus;
+  project: BoardTask;
   tasks: BoardTask[];
-  childrenByParent: Map<string, BoardTask[]>;
   agents: Map<string, AgentRow>;
-  noAgents: boolean;
-  onAddSubtask: (parent: BoardTask) => void;
+  onAddTask: () => void;
 }) {
-  const meta = STATUS_UI[status];
-  const quiet = status === "done";
+  const lead = project.assigned_agent_id ? agents.get(project.assigned_agent_id) : undefined;
+  const doneCount = tasks.filter((t) => t.status === "done").length;
+  const projectTerminal = project.status === "done" || project.status === "failed";
+
   return (
-    <section
-      aria-label={`${meta.label} column`}
-      className={`border bg-paper-2 ${meta.loud && tasks.length > 0 ? "border-magenta" : "border-line"} ${quiet ? "opacity-80" : ""}`}
-    >
-      <h2 className="flex items-center justify-between border-b border-line px-3 py-2">
+    <section aria-label={`Project ${project.title}`} className="border border-line bg-paper-2">
+      {/* Lane header */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-2">
         <span className="flex items-center gap-2 text-sm font-medium">
-          <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusColor(status) }} />
-          {meta.label}
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusColor(project.status) }} />
+          {project.title}
         </span>
-        <span className="mono text-xs text-ink-soft">{tasks.length}</span>
-      </h2>
-      <div className="space-y-2 p-2">
-        {tasks.length === 0 && (
-          <p className="px-1 py-3 text-center text-[11px] text-ink-soft">
-            {status === "todo" && !noAgents ? "Assign a task" : "—"}
-          </p>
+        <span className="mono text-[10px] uppercase tracking-widest text-ink-soft">
+          {STATUS_UI[project.status].label}
+        </span>
+        <span className="mono text-[10px] text-ink-soft">
+          {lead ? `${lead.name} · ab_${lead.api_key_prefix}` : "unassigned"}
+        </span>
+        <span className="mono ml-auto text-[10px] text-ink-soft" title="tasks done / total">
+          {doneCount}/{tasks.length} done
+        </span>
+        {!projectTerminal && (
+          <button
+            onClick={onAddTask}
+            className="mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
+          >
+            + task
+          </button>
         )}
-        {tasks.map((t) => (
-          <TaskCard
-            key={t.id}
-            task={t}
-            agent={agents.get(t.assigned_agent_id)}
-            loud={meta.loud}
-            childTasks={childrenByParent.get(t.id) ?? []}
-            onAddSubtask={onAddSubtask}
-          />
-        ))}
+      </div>
+
+      {/* Status columns for this project's tasks */}
+      <div className="grid grid-cols-1 gap-2 p-2 md:grid-cols-2 xl:grid-cols-5">
+        {STATUSES.map((status) => {
+          const meta = STATUS_UI[status];
+          const colTasks = tasks.filter((t) => t.status === status);
+          const quiet = status === "done";
+          return (
+            <div
+              key={status}
+              aria-label={`${meta.label} column`}
+              className={`border bg-paper ${meta.loud && colTasks.length > 0 ? "border-magenta" : "border-line"} ${quiet ? "opacity-80" : ""}`}
+            >
+              <h3 className="flex items-center justify-between border-b border-line px-2 py-1.5">
+                <span className="flex items-center gap-1.5 text-[11px] font-medium">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: statusColor(status) }} />
+                  {meta.label}
+                </span>
+                <span className="mono text-[10px] text-ink-soft">{colTasks.length}</span>
+              </h3>
+              <div className="space-y-2 p-2">
+                {colTasks.length === 0 && (
+                  <p className="px-1 py-2 text-center text-[10px] text-ink-soft">—</p>
+                )}
+                {colTasks.map((t) => (
+                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -281,29 +334,16 @@ function TaskCard({
   task,
   agent,
   loud,
-  childTasks,
-  onAddSubtask,
 }: {
   task: BoardTask;
   agent?: AgentRow;
   loud?: boolean;
-  childTasks: BoardTask[];
-  onAddSubtask: (parent: BoardTask) => void;
 }) {
   const terminal = task.status === "done" || task.status === "failed";
-  const isProject = task.kind === "project";
-  const doneCount = childTasks.filter((c) => c.status === "done").length;
 
   return (
     <article className="clip-corner border border-line bg-paper p-2.5">
-      <div className="flex items-start gap-2">
-        <div className="text-sm">{task.title}</div>
-        {isProject && (
-          <span className="mono ml-auto shrink-0 text-[10px] text-ink-soft" title="subtasks done / total">
-            {doneCount}/{childTasks.length} done
-          </span>
-        )}
-      </div>
+      <div className="text-sm">{task.title}</div>
       <div className="mono mt-1 flex items-center gap-2 text-[10px] text-ink-soft">
         <span>{agent ? `${agent.name} · ab_${agent.api_key_prefix}` : "—"}</span>
         <span className="ml-auto">{relative(task.updated_at)}</span>
@@ -313,28 +353,6 @@ function TaskCard({
         <div className={`mono mt-1.5 truncate text-[11px] ${loud ? "text-magenta" : "text-ink-soft"}`}>
           → {task.result}
         </div>
-      )}
-
-      {/* Nested subtasks (one level), each with its own status dot. */}
-      {isProject && (
-        <ul className="mt-2 space-y-1 border-l border-line pl-2">
-          {childTasks.map((c) => (
-            <li key={c.id} className="flex items-center gap-1.5 text-[11px]">
-              <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: statusColor(c.status) }} />
-              <span className={c.status === "done" ? "text-ink-soft line-through" : ""}>{c.title}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Human decomposition: add a subtask (only on non-terminal items). */}
-      {!terminal && (
-        <button
-          onClick={() => onAddSubtask(task)}
-          className="mono mt-2 text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
-        >
-          + subtask
-        </button>
       )}
     </article>
   );
@@ -369,6 +387,7 @@ function NewMenu({ onProject, onTask }: { onProject: () => void; onTask: () => v
 
 function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => void }) {
   const active = agents.filter((a) => !a.revoked_at);
+  const noAgents = active.length === 0;
   const [state, formAction, pending] = useActionState<ActionResult<CreatedProject> | null, FormData>(createProjectAction, null);
 
   useEffect(() => {
@@ -379,10 +398,16 @@ function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () =>
     <form action={formAction}>
       <div className="grid gap-3">
         <input name="title" required placeholder="Project title" className="border border-line bg-paper px-3 py-2 text-sm" />
-        <select name="leadAgentId" defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
+        <select name="leadAgentId" aria-label="Lead agent" defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
           <option value="">Unassigned (no lead agent)</option>
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
+        {/* A project can be created with no agents (P2) — it's just unassigned until one exists. */}
+        {noAgents && (
+          <p className="text-[11px] text-ink-soft">
+            No agents yet — you can create the project now and assign a lead (and tasks) once you add one.
+          </p>
+        )}
         <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
@@ -396,7 +421,7 @@ function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () =>
   );
 }
 
-function NewTaskPanel({ agents, projects, onDone }: { agents: AgentRow[]; projects: ProjectOption[]; onDone: () => void }) {
+function NewTaskPanel({ agents, projects, defaultProjectId, onDone }: { agents: AgentRow[]; projects: ProjectOption[]; defaultProjectId?: string; onDone: () => void }) {
   const active = agents.filter((a) => !a.revoked_at);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(createTaskAction, null);
 
@@ -404,10 +429,14 @@ function NewTaskPanel({ agents, projects, onDone }: { agents: AgentRow[]; projec
     if (state?.ok) onDone();
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pre-select the lane's project when launched from a lane "+ task"; otherwise
+  // default to the first project (Miscellaneous, pinned first by listProjects).
+  const initialProject = defaultProjectId ?? projects[0]?.id ?? "";
+
   return (
     <form action={formAction}>
       <div className="grid gap-3">
-        <select name="projectId" aria-label="Project" defaultValue={projects[0]?.id ?? ""} className="border border-line bg-paper px-3 py-2 text-sm">
+        <select name="projectId" aria-label="Project" defaultValue={initialProject} className="border border-line bg-paper px-3 py-2 text-sm">
           {projects.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
         </select>
         <input name="title" required placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
@@ -430,28 +459,3 @@ function NewTaskPanel({ agents, projects, onDone }: { agents: AgentRow[]; projec
   );
 }
 
-function AddSubtaskPanel({ parent, onDone }: { parent: BoardTask; onDone: () => void }) {
-  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(createChildTaskAction, null);
-
-  useEffect(() => {
-    if (state?.ok) onDone();
-  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <form action={formAction}>
-      <input type="hidden" name="parentTaskId" value={parent.id} />
-      <p className="mb-3 text-[11px] text-ink-soft">The subtask inherits this task&apos;s assigned agent.</p>
-      <div className="grid gap-3">
-        <input name="title" required placeholder="Subtask title" className="border border-line bg-paper px-3 py-2 text-sm" />
-        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
-      </div>
-      {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
-      <div className="mt-4 flex gap-2">
-        <button type="submit" disabled={pending} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
-          {pending ? "Adding…" : "Add subtask"}
-        </button>
-        <button type="button" onClick={onDone} className="border border-line px-4 py-2 text-sm">Cancel</button>
-      </div>
-    </form>
-  );
-}

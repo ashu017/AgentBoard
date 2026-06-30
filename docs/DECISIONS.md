@@ -685,6 +685,31 @@ consequence of the schema rather than a hand-maintained check — so the *outcom
 level) is unchanged, but the *mechanism* and the *error code* changed (409 → 404, because a
 task simply isn't a valid project parent). Logged as part of P1/P4.
 
+#### LANES-1 — Board is project swimlanes, with a project filter (supersedes the status-column board)
+**Status:** Active · 2026-07-01 · **Supersedes the §2 status-column layout** of the
+first-class-projects spec
+The board is reorganized from a single 5-column status grid into **project swimlanes**: one
+horizontal lane per project. Each lane has a header (project title, its own status, lead agent
+or "unassigned", `N/M done` roll-up, and a `+ task` action scoped to that project) and a body
+of the five status columns holding *that project's* tasks. Empty projects still render as an
+empty lane so a fresh project is visible. A **project filter** is added to the URL-param filter
+bar (`?project=<id>`, default "all") alongside window/status; selecting one narrows the board to
+that single lane (`listBoardTasks` filters lanes by id). The status filter's meaning shifts in
+this view: it narrows the **tasks shown inside lanes** (Active hides done/failed *tasks*) rather
+than hiding whole projects — a lane shows whenever its project matches the time window, so a
+project never vanishes because its work is done. The scan-summary counts now tally **child
+tasks** across visible lanes (the actual work), not the project rows. The per-task-card
+"+ subtask" affordance is removed; human decomposition now happens via the lane "+ task" button
+(the `createChildTask`/`createChildTaskAction` path remains for any future re-surfacing).
+**Why:** items 2 + 3 from user feedback — "the UI should segregate by projects (Projects, their
+list of tasks)" and "a filter to select a project". With projects now first-class (P1), grouping
+work *by project* is the natural board organization; the status columns are preserved *within*
+each lane so the at-a-glance status scan (1A-UI) still works. Filtering lanes by project keeps a
+many-project board legible. Item 1 from the same feedback ("block New Project when no agents")
+was **declined** — P2 makes an unassigned project valid, so New Project stays allowed with no
+agents; instead `NewProjectPanel` shows a hint that a lead/tasks can be added once an agent
+exists.
+
 ### NEXT-4 — Marketing landing page (SEO/AEO/GEO) + optimization agent
 **Status:** ✅ **BUILT 2026-06-30** (parallel worktrees: landing page + `seo-optimizer` agent,
 merged). Full design:
