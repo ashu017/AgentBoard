@@ -67,8 +67,18 @@ function KeyReveal({
   onDone: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  // `type: "http"` is REQUIRED — without it MCP clients (Claude Code, etc.) don't
+  // know the transport and silently skip the server, so it never connects.
   const snippet = JSON.stringify(
-    { mcpServers: { agentboard: { url: mcpEndpoint, headers: { Authorization: `Bearer ${agent.token}` } } } },
+    {
+      mcpServers: {
+        agentboard: {
+          type: "http",
+          url: mcpEndpoint,
+          headers: { Authorization: `Bearer ${agent.token}` },
+        },
+      },
+    },
     null,
     2
   );
