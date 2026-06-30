@@ -3,8 +3,9 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { STATUSES, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
-import { createTaskAction, createChildTaskAction, type ActionResult } from "@/app/actions";
-import type { BoardTask, AgentRow, BoardFilters, TimeWindow, StatusFilter } from "@/lib/manager-queries";
+import { createTaskAction, createChildTaskAction, createProjectAction, type ActionResult } from "@/app/actions";
+import type { BoardTask, AgentRow, BoardFilters, TimeWindow, StatusFilter, ProjectOption } from "@/lib/manager-queries";
+import type { CreatedProject } from "@/lib/manager-actions";
 import { Modal } from "@/app/_components/Modal";
 import { AddAgentFlow } from "@/app/_components/AddAgentFlow";
 
@@ -22,12 +23,14 @@ const STATUS_LABELS: Record<StatusFilter, string> = { active: "Active", all: "Al
 export function BoardClient({
   initialTasks,
   agents,
+  projects,
   capped,
   mcpEndpoint,
   filters,
 }: {
   initialTasks: BoardTask[];
   agents: AgentRow[];
+  projects: ProjectOption[];
   capped: boolean;
   mcpEndpoint: string;
   filters: BoardFilters;
@@ -36,6 +39,7 @@ export function BoardClient({
   const [live, setLive] = useState(false);
   const [announce, setAnnounce] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
   const [addAgent, setAddAgent] = useState(false);
   const [subtaskParent, setSubtaskParent] = useState<BoardTask | null>(null);
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
@@ -50,7 +54,7 @@ export function BoardClient({
     async function refetch() {
       const { data } = await supabase!
         .from("tasks")
-        .select("id, title, description, status, result, assigned_agent_id, parent_id, updated_at")
+        .select("id, title, description, status, result, assigned_agent_id, parent_id, kind, updated_at")
         .order("updated_at", { ascending: false })
         .limit(400);
       if (data) setTasks(data as BoardTask[]);
@@ -106,9 +110,10 @@ export function BoardClient({
           )}
           <span className="text-ink-soft">{counts.in_progress} in progress · {counts.in_review} in review · {counts.done} done</span>
         </div>
-        <button onClick={() => setShowNew(true)} className="bg-orange px-3 py-1.5 text-sm font-medium text-paper">
-          New task
-        </button>
+        <NewMenu
+          onProject={() => setShowNewProject(true)}
+          onTask={() => setShowNew(true)}
+        />
       </div>
 
       {/* Filter bar (URL params, shareable). Anchors → server re-renders filtered. */}
@@ -146,8 +151,18 @@ export function BoardClient({
             </div>
           </div>
         ) : (
-          <NewTaskPanel agents={agents} onDone={() => setShowNew(false)} />
+          <NewTaskPanel agents={agents} projects={projects} onDone={() => setShowNew(false)} />
         )}
+      </Modal>
+
+      <Modal
+        open={showNewProject}
+        onClose={() => setShowNewProject(false)}
+        title="New project"
+        systemTag="SYS:: NEW PROJECT"
+        blurBackdrop
+      >
+        <NewProjectPanel agents={agents} onDone={() => setShowNewProject(false)} />
       </Modal>
 
       {/* Human "add subtask" to a project (decomposition, human path). */}
@@ -276,7 +291,7 @@ function TaskCard({
   onAddSubtask: (parent: BoardTask) => void;
 }) {
   const terminal = task.status === "done" || task.status === "failed";
-  const isProject = childTasks.length > 0;
+  const isProject = task.kind === "project";
   const doneCount = childTasks.filter((c) => c.status === "done").length;
 
   return (
@@ -325,7 +340,53 @@ function TaskCard({
   );
 }
 
-function NewTaskPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => void }) {
+function NewMenu({ onProject, onTask }: { onProject: () => void; onTask: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="bg-orange px-3 py-1.5 text-sm font-medium text-paper">
+        + New ▾
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-1 w-36 border border-line bg-paper text-sm shadow">
+          <button onClick={() => { setOpen(false); onProject(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Project</button>
+          <button onClick={() => { setOpen(false); onTask(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Task</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => void }) {
+  const active = agents.filter((a) => !a.revoked_at);
+  const [state, formAction, pending] = useActionState<ActionResult<CreatedProject> | null, FormData>(createProjectAction, null);
+
+  useEffect(() => {
+    if (state?.ok) onDone();
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <form action={formAction}>
+      <div className="grid gap-3">
+        <input name="title" required placeholder="Project title" className="border border-line bg-paper px-3 py-2 text-sm" />
+        <select name="leadAgentId" defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
+          <option value="">Unassigned (no lead agent)</option>
+          {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
+        </select>
+        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+      </div>
+      {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
+      <div className="mt-4 flex gap-2">
+        <button type="submit" disabled={pending} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
+          {pending ? "Creating…" : "Create project"}
+        </button>
+        <button type="button" onClick={onDone} className="border border-line px-4 py-2 text-sm">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function NewTaskPanel({ agents, projects, onDone }: { agents: AgentRow[]; projects: ProjectOption[]; onDone: () => void }) {
   const active = agents.filter((a) => !a.revoked_at);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(createTaskAction, null);
 
@@ -336,6 +397,9 @@ function NewTaskPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => vo
   return (
     <form action={formAction}>
       <div className="grid gap-3">
+        <select name="projectId" defaultValue={projects[0]?.id ?? ""} className="border border-line bg-paper px-3 py-2 text-sm">
+          {projects.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
+        </select>
         <input name="title" required placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
         <select name="assignedAgentId" required defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
           <option value="" disabled>Assign to…</option>
