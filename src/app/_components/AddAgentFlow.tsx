@@ -22,7 +22,7 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
   return (
     <>
       {/* Step 1 — name + description */}
-      <Modal open={step === "form"} onClose={onClose} title="Add agent" systemTag="SYS:: NEW AGENT">
+      <Modal open={step === "form"} onClose={onClose} title="Add agent" systemTag="SYS:: NEW AGENT" blurBackdrop>
         <form action={formAction}>
           <div className="grid gap-3">
             <input name="name" required placeholder="Agent name" className="border border-line bg-paper px-3 py-2 text-sm" />
@@ -48,6 +48,7 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
         title={created ? `Key for ${created.name}` : "Key"}
         systemTag="SYS:: KEY — SHOWN ONCE"
         closeOnBackdrop={false}
+        blurBackdrop
         size="lg"
       >
         {created && <KeyReveal agent={created} mcpEndpoint={mcpEndpoint} onDone={onClose} />}

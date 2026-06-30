@@ -78,3 +78,10 @@ body {
   outline: 2px solid var(--orange);
   outline-offset: 2px;
 }
+
+/* Shimmer sweep for pending/loading buttons (e.g. sign-in while the action runs). */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

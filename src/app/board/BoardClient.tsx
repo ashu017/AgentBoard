@@ -130,6 +130,7 @@ export function BoardClient({
         onClose={() => setShowNew(false)}
         title={noAgents ? "No agents on duty" : "New task"}
         systemTag={noAgents ? "SYS:: NOBODY HOME" : "SYS:: ASSIGN"}
+        blurBackdrop
       >
         {noAgents ? (
           <div>
@@ -155,6 +156,7 @@ export function BoardClient({
         onClose={() => setSubtaskParent(null)}
         title={subtaskParent ? `Subtask of "${subtaskParent.title}"` : "Subtask"}
         systemTag="SYS:: DECOMPOSE"
+        blurBackdrop
       >
         {subtaskParent && <AddSubtaskPanel parent={subtaskParent} onDone={() => setSubtaskParent(null)} />}
       </Modal>

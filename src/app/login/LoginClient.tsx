@@ -1,4 +1,5 @@
 "use client";
+import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/app/_components/Modal";
 import { devLogin, signInWithGitHub } from "./actions";
@@ -15,8 +16,7 @@ export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; o
   return (
     <>
       {/* Blurred operator-console backdrop so the modal reads as floating over
-          the page, not as a standalone screen. The Modal's own frosted backdrop
-          (blurBackdrop) dims + blurs this further. */}
+          the page, not as a standalone screen. */}
       <div aria-hidden="true" className="pointer-events-none flex min-h-full items-center justify-center blur-sm">
         <div className="mono text-xs uppercase tracking-[0.3em] text-ink-soft/50">SYS:: AGENTBOARD</div>
       </div>
@@ -38,23 +38,23 @@ export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; o
 
         <div className="mt-5 space-y-3">
           <form action={signInWithGitHub}>
-            <button
-              type="submit"
-              className="w-full border border-ink bg-ink px-4 py-2.5 text-sm font-medium text-paper hover:opacity-90"
+            <SubmitButton
+              className="w-full border border-ink bg-ink text-paper hover:opacity-90"
+              pendingLabel="Connecting to GitHub…"
             >
               Continue with GitHub
-            </button>
+            </SubmitButton>
           </form>
 
           {devEnabled && (
             <form action={devLogin}>
-              <button
-                type="submit"
-                className="w-full bg-orange px-4 py-2.5 text-sm font-medium text-paper"
+              <SubmitButton
+                className="w-full bg-orange text-paper"
+                pendingLabel="Signing in…"
               >
                 Dev sign-in
                 <span className="mono ml-2 text-[10px] uppercase opacity-80">local</span>
-              </button>
+              </SubmitButton>
             </form>
           )}
         </div>
@@ -66,5 +66,54 @@ export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; o
         )}
       </Modal>
     </>
+  );
+}
+
+// Submit button that reflects the form's pending state (useFormStatus): while the
+// server action runs (and, for GitHub, the redirect to the provider is in flight)
+// it disables, dims, shows a spinner + a shimmer sweep, and swaps to a pending
+// label — so the user gets immediate feedback instead of a dead click.
+function SubmitButton({
+  children,
+  className = "",
+  pendingLabel,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  pendingLabel: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className={`relative flex items-center justify-center overflow-hidden px-4 py-2.5 text-sm font-medium transition-opacity disabled:cursor-wait disabled:opacity-80 ${className}`}
+    >
+      {/* Shimmer sweep while pending. */}
+      {pending && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -translate-x-full animate-[shimmer_1.1s_infinite] bg-gradient-to-r from-transparent via-white/25 to-transparent"
+        />
+      )}
+      {pending ? (
+        <span className="flex items-center gap-2">
+          <Spinner />
+          {pendingLabel}
+        </span>
+      ) : (
+        <span className="flex items-center">{children}</span>
+      )}
+    </button>
+  );
+}
+
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+    />
   );
 }
