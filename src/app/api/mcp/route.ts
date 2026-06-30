@@ -16,12 +16,13 @@ import { STATUSES } from "@/lib/task-status";
 
 // ───────────────────────────────────────────────────────────────────────────
 // AgentBoard v1 MCP server — the agent plane (design.md "MCP server"; DECISIONS
-// 1A/D12/3A). Three tools, authenticated per-call by a per-agent bearer key:
+// 1A/D12/3A). Five tools, authenticated per-call by a per-agent bearer key:
 //
 //   list_my_tasks(status?, parent_task_id?)  — the agent's own tasks / subtree
 //   update_task_status(task_id, status, note?)
 //   submit_result(task_id, output, status?)
-//   create_subtask(parent_task_id, title, description?)  — decompose a task
+//   create_subtask(parent_task_id, title, description?, assignee_agent_id?)  — decompose a project
+//   list_agents()  — active workspace agents, for delegating a subtask
 //
 // Auth: withMcpAuth verifies the bearer, resolves (agentId, workspaceId) via the
 // confined service-role module, and carries it in authInfo.extra. Every tool
