@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase-server";
 import { getSession } from "@/lib/session";
 import { generateApiKey } from "@/lib/api-key";
 import { INITIAL_STATUS } from "@/lib/task-status";
+import { getOrCreateMiscProject } from "@/lib/projects";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Human-plane write operations (the manager UI). All run under the user's RLS
@@ -103,7 +104,8 @@ export interface CreatedTask {
 export async function createTask(
   title: string,
   assignedAgentId: string,
-  description?: string
+  description?: string,
+  projectId?: string
 ): Promise<CreatedTask> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -122,11 +124,29 @@ export async function createTask(
   if (!agent) throw new Error("Assignee agent not found in your workspace");
   if (agent.revoked_at) throw new Error("Cannot assign work to a revoked agent");
 
+  // Resolve the parent project: explicit, else Miscellaneous (default home, P3).
+  let parentId = projectId;
+  if (!parentId) {
+    const misc = await getOrCreateMiscProject(supabase, session.workspace.id);
+    parentId = misc.id;
+  } else {
+    const { data: proj } = await supabase
+      .from("tasks")
+      .select("id")
+      .eq("id", parentId)
+      .eq("workspace_id", session.workspace.id)
+      .eq("kind", "project")
+      .maybeSingle();
+    if (!proj) throw new Error("Project not found in your workspace");
+  }
+
   const { data: task, error } = await supabase
     .from("tasks")
     .insert({
       workspace_id: session.workspace.id,
       assigned_agent_id: assignedAgentId,
+      parent_id: parentId,
+      kind: "task",
       title: title.trim(),
       description: description?.trim() || null,
       status: INITIAL_STATUS,
@@ -171,15 +191,15 @@ export async function createChildTask(
 
   const supabase = await createServerSupabase();
 
-  // Parent must be in this workspace and itself top-level (depth-2 cap).
+  // Parent must be in this workspace and be a project (subtasks live under projects).
   const { data: parent } = await supabase
     .from("tasks")
-    .select("id, assigned_agent_id, parent_id")
+    .select("id, assigned_agent_id, kind")
     .eq("id", parentTaskId)
     .eq("workspace_id", session.workspace.id)
     .maybeSingle();
   if (!parent) throw new Error("Parent task not found in your workspace");
-  if (parent.parent_id) throw new Error("Cannot add a subtask to a subtask (max depth is 2)");
+  if (parent.kind !== "project") throw new Error("Subtasks can only be added to a project");
 
   const { data: task, error } = await supabase
     .from("tasks")
@@ -187,6 +207,7 @@ export async function createChildTask(
       workspace_id: session.workspace.id,
       assigned_agent_id: parent.assigned_agent_id, // child inherits parent's agent
       parent_id: parent.id,
+      kind: "task",
       title: title.trim(),
       description: description?.trim() || null,
       status: INITIAL_STATUS,
@@ -209,4 +230,63 @@ export async function createChildTask(
   }
 
   return task as CreatedTask;
+}
+
+export interface CreatedProject {
+  id: string;
+  title: string;
+  status: string;
+  assigned_agent_id: string | null;
+}
+
+/**
+ * Create a project (kind='project', spec P1). Optional lead agent (NULL =
+ * unassigned). Runs under the user's RLS session. Writes the `created` event.
+ */
+export async function createProject(
+  title: string,
+  leadAgentId?: string,
+  description?: string
+): Promise<CreatedProject> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!title.trim()) throw new Error("Project title is required");
+
+  const supabase = await createServerSupabase();
+
+  if (leadAgentId) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id, revoked_at")
+      .eq("id", leadAgentId)
+      .eq("workspace_id", session.workspace.id)
+      .maybeSingle();
+    if (!agent) throw new Error("Lead agent not found in your workspace");
+    if (agent.revoked_at) throw new Error("Cannot assign a project to a revoked agent");
+  }
+
+  const { data: project, error } = await supabase
+    .from("tasks")
+    .insert({
+      workspace_id: session.workspace.id,
+      kind: "project",
+      assigned_agent_id: leadAgentId || null,
+      title: title.trim(),
+      description: description?.trim() || null,
+      status: INITIAL_STATUS,
+      created_by_user_id: session.user.id,
+    })
+    .select("id, title, status, assigned_agent_id")
+    .single();
+  if (error) throw new Error(`create project failed: ${error.message}`);
+
+  const { error: evErr } = await supabase.from("task_events").insert({
+    task_id: project.id, actor_type: "user", actor_id: session.user.id,
+    event_type: "created", to_status: INITIAL_STATUS,
+  });
+  if (evErr) {
+    await supabase.from("tasks").delete().eq("id", project.id);
+    throw new Error(`create project event failed: ${evErr.message}`);
+  }
+  return project as CreatedProject;
 }
