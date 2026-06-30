@@ -34,8 +34,8 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     siteName: "AgentBoard",
-    // TODO: replace with a real branded OG image (1200x630). Until then Next
-    // falls back to no image; the card still renders with title + description.
+    // OG image is generated from brand tokens by app/opengraph-image.tsx (Next
+    // auto-detects it); twitter-image.tsx re-exports it for the Twitter card.
   },
   twitter: {
     card: "summary_large_image",
