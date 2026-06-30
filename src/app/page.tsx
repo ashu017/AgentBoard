@@ -107,7 +107,7 @@ export default function LandingPage() {
 
       {/* ── System bar / floating glass-pill nav ─────────────────────────── */}
       <header className="sticky top-0 z-20">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-3 sm:px-8 lg:px-12">
           <span className="mono text-xs uppercase tracking-[0.2em] text-orange">
             SYS:: AGENTBOARD
           </span>
@@ -129,7 +129,7 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-5">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-6 sm:px-8 lg:px-12">
         {/* ── Hero (GEO + SEO value prop) ────────────────────────────────── */}
         <section aria-labelledby="hero-heading" className="py-16 sm:py-24">
           <p className="mono text-xs uppercase tracking-[0.2em] text-ink-soft">
@@ -239,7 +239,7 @@ export default function LandingPage() {
 
       {/* ── Footer (SEO internal links + Organization) ───────────────────── */}
       <footer className="border-t border-line bg-paper-2/70">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-8 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-8 sm:px-8 lg:px-12 sm:flex-row sm:items-center sm:justify-between">
           <nav
             aria-label="Footer"
             className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-soft"
