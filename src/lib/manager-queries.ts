@@ -25,6 +25,7 @@ export interface BoardTask {
   result: string | null;
   assigned_agent_id: string;
   parent_id: string | null;
+  kind: "project" | "task";
   updated_at: string;
 }
 
@@ -71,7 +72,27 @@ export async function listAgents(): Promise<AgentRow[]> {
   });
 }
 
-const BOARD_COLS = "id, title, description, status, result, assigned_agent_id, parent_id, updated_at";
+export interface ProjectOption {
+  id: string;
+  title: string;
+  assigned_agent_id: string | null;
+}
+
+/** Projects in the caller's workspace (Add-Task selector). Miscellaneous first. */
+export async function listProjects(): Promise<ProjectOption[]> {
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, title, assigned_agent_id")
+    .eq("kind", "project")
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as ProjectOption[];
+  // Pin Miscellaneous to the top so it is the default selection.
+  return rows.sort((a, b) => (a.title === "Miscellaneous" ? -1 : b.title === "Miscellaneous" ? 1 : 0));
+}
+
+const BOARD_COLS = "id, title, description, status, result, assigned_agent_id, parent_id, kind, updated_at";
 
 /**
  * Board read: top-level items matching the filters, plus all children of those

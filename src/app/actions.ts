@@ -6,7 +6,9 @@ import {
   deleteAgent as _deleteAgent,
   createTask as _createTask,
   createChildTask as _createChildTask,
+  createProject as _createProject,
   type CreatedAgent,
+  type CreatedProject,
 } from "@/lib/manager-actions";
 
 // Server-action wrappers for the manager UI forms. Thin: validate-via-lib,
@@ -70,11 +72,28 @@ export async function createTaskAction(
     const title = String(formData.get("title") ?? "");
     const assignee = String(formData.get("assignedAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    await _createTask(title, assignee, description);
+    const projectId = String(formData.get("projectId") ?? "");
+    await _createTask(title, assignee, description, projectId || undefined);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create task" };
+  }
+}
+
+export async function createProjectAction(
+  _prev: ActionResult<CreatedProject> | null,
+  formData: FormData
+): Promise<ActionResult<CreatedProject>> {
+  try {
+    const title = String(formData.get("title") ?? "");
+    const leadAgentId = String(formData.get("leadAgentId") ?? "");
+    const description = String(formData.get("description") ?? "");
+    const project = await _createProject(title, leadAgentId || undefined, description);
+    revalidatePath("/board");
+    return { ok: true, data: project };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to create project" };
   }
 }
 
