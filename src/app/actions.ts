@@ -27,8 +27,8 @@ export async function createAgentAction(
     const name = String(formData.get("name") ?? "");
     const description = String(formData.get("description") ?? "");
     const agent = await _createAgent(name, description);
-    revalidatePath("/agents");
-    revalidatePath("/"); // board's assignee list + no-agents state depend on this
+    revalidatePath("/board/agents");
+    revalidatePath("/board"); // board's assignee list + no-agents state depend on this
     return { ok: true, data: agent };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create agent" };
@@ -41,7 +41,7 @@ export async function revokeAgentAction(
 ): Promise<ActionResult> {
   try {
     await _revokeAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/agents");
+    revalidatePath("/board/agents");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to revoke" };
@@ -54,8 +54,8 @@ export async function deleteAgentAction(
 ): Promise<ActionResult> {
   try {
     await _deleteAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/agents");
-    revalidatePath("/");
+    revalidatePath("/board/agents");
+    revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to delete" };
@@ -71,7 +71,7 @@ export async function createTaskAction(
     const assignee = String(formData.get("assignedAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
     await _createTask(title, assignee, description);
-    revalidatePath("/");
+    revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create task" };
@@ -87,7 +87,7 @@ export async function createChildTaskAction(
     const title = String(formData.get("title") ?? "");
     const description = String(formData.get("description") ?? "");
     await _createChildTask(parentTaskId, title, description);
-    revalidatePath("/");
+    revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to add subtask" };

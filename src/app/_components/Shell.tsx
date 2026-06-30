@@ -20,8 +20,8 @@ export function Shell({
             <span className="mono text-[11px] text-ink-soft">{workspaceName}</span>
           </div>
           <nav className="flex items-center gap-1">
-            <NavLink href="/" label="Board" current={active === "board"} />
-            <NavLink href="/agents" label="Agents" current={active === "agents"} />
+            <NavLink href="/board" label="Board" current={active === "board"} />
+            <NavLink href="/board/agents" label="Agents" current={active === "agents"} />
             <form action={signOut} className="ml-2">
               <button className="mono text-[11px] uppercase text-ink-soft hover:text-ink">
                 sign out

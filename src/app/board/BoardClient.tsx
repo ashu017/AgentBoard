@@ -184,7 +184,7 @@ function FilterBar({ filters }: { filters: BoardFilters }) {
   const href = (next: Partial<BoardFilters>) => {
     const w = next.window ?? filters.window;
     const s = next.status ?? filters.status;
-    return `/?window=${w}&status=${s}`;
+    return `/board?window=${w}&status=${s}`;
   };
   return (
     <div className="mono mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]">
