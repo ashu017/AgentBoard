@@ -107,25 +107,30 @@ export default function LandingPage() {
 
       {/* ── System bar / floating glass-pill nav ─────────────────────────── */}
       <header className="sticky top-0 z-20">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-6 py-3 sm:px-8 lg:px-12">
-          <span className="mono text-xs uppercase tracking-[0.2em] text-orange">
+        {/* Three-zone header: wordmark hard-left, glass nav truly centered
+            (grid 1fr/auto/1fr so the center cell is centered relative to the
+            whole header, not just "between" the side widths), Sign in hard-right. */}
+        <div className="mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-6 py-3 sm:px-8 lg:px-12">
+          <span className="mono justify-self-start text-xs uppercase tracking-[0.2em] text-orange">
             SYS:: AGENTBOARD
           </span>
-          <div className="flex items-center gap-2">
+          {/* On narrow screens the center nav is hidden to avoid a cramped
+              3-col squeeze; the wordmark + Sign in still anchor the header. */}
+          <div className="hidden justify-self-center md:block">
             <GlassNav ariaLabel="Primary">
               <GlassNavAnchor href="#how-it-works" label="How it works" />
               <GlassNavAnchor href="#about" label="About" />
               <GlassNavAnchor href="#faq" label="FAQ" />
               <GlassNavLink href="/board" label="Go to board" />
             </GlassNav>
-            {/* Primary action stays a solid orange CTA, beside the pill. */}
-            <Link
-              href="/login"
-              className="rounded-full bg-orange px-4 py-1.5 text-sm font-medium text-paper shadow-sm transition-colors hover:bg-orange/90"
-            >
-              Sign in
-            </Link>
           </div>
+          {/* Primary action stays a solid orange CTA, anchored to the right. */}
+          <Link
+            href="/login"
+            className="justify-self-end rounded-full bg-orange px-4 py-1.5 text-sm font-medium text-paper shadow-sm transition-colors hover:bg-orange/90"
+          >
+            Sign in
+          </Link>
         </div>
       </header>
 
