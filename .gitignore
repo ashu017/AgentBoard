@@ -14,6 +14,9 @@ build/
 .env*.local
 .env.local
 
+# MCP config — holds a per-agent bearer token; keep local only, never commit
+.mcp.json
+
 # Logs
 *.log
 npm-debug.log*
