@@ -540,13 +540,23 @@ live-region trap) isn't viewport-dependent.
 Captured for a future phase; no code/agent files created yet.
 
 ### NEXT-1 — Hierarchical tasks (project → task) + agent decomposition + board filters
-**Status:** Spec'd 2026-06-30 · not built. Full design:
+**Status:** ✅ **BUILT 2026-06-30** (was spec'd same day). Full design:
 `docs/superpowers/specs/2026-06-30-hierarchical-tasks-design.md`. In brief: single
 recursive `tasks` table (`parent_id`, depth-capped at 2, recursion-ready); a "project" is
 a parent-less task with children; humans **and** agents create child tasks (new
 `create_subtask` MCP tool); subagents stay internal to the agent runtime; agent owns parent
 status (no rollup, board shows `N/M done`); board gains timeline (2w default / 30d / 90d /
 all, on `updated_at`) + status (active default / all) filters.
+**Built:** migrations `0006` (parent_id + index, created_by_user_id made nullable for
+agent-created tasks) and `0007` (`create_subtask` RPC: depth-2 cap + insert + `created`
+event atomically, search_path pinned, revoked from anon/authenticated). agent-db gains
+`createSubtask` + `listMyTasks(status?, parentId?)`; MCP exposes `create_subtask` +
+`list_my_tasks` parent filter (4 tools now). Human path: `createChildTask` action +
+`+ subtask` board affordance. Board nests children one level inside the parent's status
+column with status dots + done-strikethrough + `N/M done` hint; filter bar via URL params
+(`?window=&status=`). Verified end-to-end in browser + a real MCP client (decomposition,
+depth-cap 409, filters hide/show done). 74 tests green (+7: create_subtask inherit/event/
+depth/empty/404 + parent-filter + cross-tenant subtask 404).
 
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a

@@ -152,3 +152,61 @@ export async function createTask(
 
   return task as CreatedTask;
 }
+
+/**
+ * Add a child task under a project the manager owns (human decomposition). The
+ * child inherits the parent's workspace + assigned agent, starts `todo`. Depth
+ * is capped at 2: the parent must itself be top-level (parent_id IS NULL). Runs
+ * under the user's RLS session (parent lookup already scoped to the workspace).
+ */
+export async function createChildTask(
+  parentTaskId: string,
+  title: string,
+  description?: string
+): Promise<CreatedTask> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!parentTaskId) throw new Error("A parent task is required");
+  if (!title.trim()) throw new Error("Task title is required");
+
+  const supabase = await createServerSupabase();
+
+  // Parent must be in this workspace and itself top-level (depth-2 cap).
+  const { data: parent } = await supabase
+    .from("tasks")
+    .select("id, assigned_agent_id, parent_id")
+    .eq("id", parentTaskId)
+    .eq("workspace_id", session.workspace.id)
+    .maybeSingle();
+  if (!parent) throw new Error("Parent task not found in your workspace");
+  if (parent.parent_id) throw new Error("Cannot add a subtask to a subtask (max depth is 2)");
+
+  const { data: task, error } = await supabase
+    .from("tasks")
+    .insert({
+      workspace_id: session.workspace.id,
+      assigned_agent_id: parent.assigned_agent_id, // child inherits parent's agent
+      parent_id: parent.id,
+      title: title.trim(),
+      description: description?.trim() || null,
+      status: INITIAL_STATUS,
+      created_by_user_id: session.user.id,
+    })
+    .select("id, title, status, assigned_agent_id")
+    .single();
+  if (error) throw new Error(`create subtask failed: ${error.message}`);
+
+  const { error: evErr } = await supabase.from("task_events").insert({
+    task_id: task.id,
+    actor_type: "user",
+    actor_id: session.user.id,
+    event_type: "created",
+    to_status: INITIAL_STATUS,
+  });
+  if (evErr) {
+    await supabase.from("tasks").delete().eq("id", task.id);
+    throw new Error(`create subtask event failed: ${evErr.message}`);
+  }
+
+  return task as CreatedTask;
+}

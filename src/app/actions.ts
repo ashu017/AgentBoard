@@ -5,6 +5,7 @@ import {
   revokeAgent as _revokeAgent,
   deleteAgent as _deleteAgent,
   createTask as _createTask,
+  createChildTask as _createChildTask,
   type CreatedAgent,
 } from "@/lib/manager-actions";
 
@@ -74,5 +75,21 @@ export async function createTaskAction(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create task" };
+  }
+}
+
+export async function createChildTaskAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const parentTaskId = String(formData.get("parentTaskId") ?? "");
+    const title = String(formData.get("title") ?? "");
+    const description = String(formData.get("description") ?? "");
+    await _createChildTask(parentTaskId, title, description);
+    revalidatePath("/");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to add subtask" };
   }
 }

@@ -47,6 +47,7 @@ export interface TaskRow {
   id: string;
   workspace_id: string;
   assigned_agent_id: string;
+  parent_id: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -121,16 +122,63 @@ export async function touchLastSeen(ctx: AgentContext, nowMs: number = Date.now(
 
 // ── Operations ───────────────────────────────────────────────────────────────
 
-/** list_my_tasks(status?) — the agent's own tasks, optionally filtered by status. */
-export async function listMyTasks(ctx: AgentContext, status?: string): Promise<TaskRow[]> {
+/**
+ * list_my_tasks(status?, parentId?) — the agent's own tasks, optionally filtered
+ * by status and/or parent. `parentId: null` returns only top-level tasks; a uuid
+ * returns that parent's children (the agent's own subtree).
+ */
+export async function listMyTasks(
+  ctx: AgentContext,
+  status?: string,
+  parentId?: string | null
+): Promise<TaskRow[]> {
   let q = scopedTasks(ctx).order("updated_at", { ascending: false });
   if (status !== undefined) {
     if (!isStatus(status)) throw badInput(`Unknown status: ${status}`);
     q = q.eq("status", status);
   }
+  if (parentId !== undefined) {
+    q = parentId === null ? q.is("parent_id", null) : q.eq("parent_id", parentId);
+  }
   const { data, error } = await q;
   if (error) throw badInput(error.message);
   return (data ?? []) as TaskRow[];
+}
+
+/**
+ * create_subtask(parent_task_id, title, description?) — create a child task on a
+ * task the agent owns. Atomic via the create_subtask RPC (depth-2 cap + insert +
+ * `created` event in one txn). Parent not owned/absent → 404; parent already a
+ * child → 409; empty title → 400. Child inherits the parent's workspace + agent.
+ */
+export async function createSubtask(
+  ctx: AgentContext,
+  parentTaskId: string,
+  title: string,
+  description?: string
+): Promise<TaskRow> {
+  if (!parentTaskId) throw badInput("parent_task_id required");
+  if (typeof title !== "string" || !title.trim()) throw badInput("title required");
+
+  const { data, error } = await db().rpc("create_subtask", {
+    p_workspace_id: ctx.workspaceId,
+    p_parent_id: parentTaskId,
+    p_title: title.trim(),
+    p_description: description?.trim() || null,
+    p_actor_type: "agent",
+    p_actor_id: ctx.agentId,
+    p_created_by: null, // agent-created → no human creator (FK would reject an agent id)
+    p_require_agent: ctx.agentId, // parent must be assigned to this agent
+  });
+
+  if (error) throw badInput(error.message);
+  const res = data as
+    | { ok: true; task: TaskRow }
+    | { ok: false; reason: "not_found" | "depth_exceeded" };
+
+  if (res.ok) return res.task;
+  if (res.reason === "not_found") throw notFound();
+  throw illegalTransition("Cannot add a subtask to a subtask (max depth is 2)");
 }
 
 /** Fetch one scoped task or throw 404 (not 403). Used to validate transitions. */

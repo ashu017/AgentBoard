@@ -107,6 +107,69 @@ d("agent-db (live DB)", () => {
       expect(bTask.result).toBeNull();
       expect(bTask.status).toBe("in_progress");
     });
+
+    it("agent A cannot create_subtask under B's task (404)", async () => {
+      const bTaskId = await seedTask(B, { title: "B-parent", status: "todo" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await expect(agentDb.createSubtask(ctxA, bTaskId, "smuggled child")).rejects.toMatchObject({ code: 404 });
+    });
+  });
+
+  // ── Hierarchical tasks (create_subtask + depth cap) ────────────────────────
+  describe("createSubtask (hierarchy, depth-2 cap)", () => {
+    it("creates a child inheriting the parent's workspace + agent, status todo", async () => {
+      const parentId = await seedTask(A, { title: "A-project", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      const child = await agentDb.createSubtask(ctxA, parentId, "step one", "detail");
+      expect(child.parent_id).toBe(parentId);
+      expect(child.workspace_id).toBe(A.workspaceId);
+      expect(child.assigned_agent_id).toBe(A.agentId);
+      expect(child.status).toBe("todo");
+    });
+
+    it("writes a `created` event for the child (actor agent)", async () => {
+      const parentId = await seedTask(A, { title: "A-project-ev", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      const child = await agentDb.createSubtask(ctxA, parentId, "child-ev");
+      const { admin } = await import("./helpers");
+      const { data: events } = await admin()
+        .from("task_events")
+        .select("event_type, actor_type, to_status")
+        .eq("task_id", child.id);
+      expect(events).toContainEqual(
+        expect.objectContaining({ event_type: "created", actor_type: "agent", to_status: "todo" })
+      );
+    });
+
+    it("rejects a subtask of a subtask with 409 (depth-2 cap)", async () => {
+      const parentId = await seedTask(A, { title: "A-depth", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      const child = await agentDb.createSubtask(ctxA, parentId, "level-2");
+      await expect(agentDb.createSubtask(ctxA, child.id, "level-3")).rejects.toMatchObject({ code: 409 });
+    });
+
+    it("rejects an empty title with 400", async () => {
+      const parentId = await seedTask(A, { title: "A-empty", status: "todo" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await expect(agentDb.createSubtask(ctxA, parentId, "   ")).rejects.toMatchObject({ code: 400 });
+    });
+
+    it("404 for a parent not assigned to the agent (absent id)", async () => {
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await expect(
+        agentDb.createSubtask(ctxA, "00000000-0000-0000-0000-000000000000", "orphan")
+      ).rejects.toMatchObject({ code: 404 });
+    });
+
+    it("list_my_tasks(parentId) returns only that parent's children", async () => {
+      const parentId = await seedTask(A, { title: "A-listparent", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await agentDb.createSubtask(ctxA, parentId, "c1");
+      await agentDb.createSubtask(ctxA, parentId, "c2");
+      const children = await agentDb.listMyTasks(ctxA, undefined, parentId);
+      expect(children.length).toBe(2);
+      expect(children.every((t) => t.parent_id === parentId)).toBe(true);
+    });
   });
 
   describe("listMyTasks", () => {

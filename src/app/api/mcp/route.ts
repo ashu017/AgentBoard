@@ -7,6 +7,7 @@ import {
   listMyTasks,
   updateTaskStatus,
   submitResult,
+  createSubtask,
   type AgentContext,
 } from "@/lib/agent-db";
 import { AgentError } from "@/lib/agent-errors";
@@ -16,9 +17,10 @@ import { STATUSES } from "@/lib/task-status";
 // AgentBoard v1 MCP server — the agent plane (design.md "MCP server"; DECISIONS
 // 1A/D12/3A). Three tools, authenticated per-call by a per-agent bearer key:
 //
-//   list_my_tasks(status?)              — the agent's own tasks
+//   list_my_tasks(status?, parent_task_id?)  — the agent's own tasks / subtree
 //   update_task_status(task_id, status, note?)
 //   submit_result(task_id, output, status?)
+//   create_subtask(parent_task_id, title, description?)  — decompose a task
 //
 // Auth: withMcpAuth verifies the bearer, resolves (agentId, workspaceId) via the
 // confined service-role module, and carries it in authInfo.extra. Every tool
@@ -55,14 +57,40 @@ const baseHandler = createMcpHandler(
   (server) => {
     server.tool(
       "list_my_tasks",
-      "List the tasks assigned to the calling agent, optionally filtered by status.",
-      { status: STATUS_ENUM.optional().describe("Filter to this status if given") },
-      async ({ status }, extra) => {
+      "List the tasks assigned to the calling agent. Optionally filter by status, and/or by parent_task_id to read a project's subtasks.",
+      {
+        status: STATUS_ENUM.optional().describe("Filter to this status if given"),
+        parent_task_id: z
+          .string()
+          .optional()
+          .describe("If given, return only the subtasks of this parent task"),
+      },
+      async ({ status, parent_task_id }, extra) => {
         try {
           const ctx = ctxFrom(extra);
           await touchLastSeen(ctx);
-          const tasks = await listMyTasks(ctx, status);
+          const tasks = await listMyTasks(ctx, status, parent_task_id);
           return ok({ tasks });
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
+      "create_subtask",
+      "Break a task you own into a child task (e.g. decompose a project). The subtask is assigned to you and starts as 'todo'. Max nesting depth is 2.",
+      {
+        parent_task_id: z.string().min(1).describe("The task to add a subtask under (must be assigned to you, and not itself a subtask)"),
+        title: z.string().min(1).describe("Subtask title"),
+        description: z.string().max(4000).optional().describe("Optional detail"),
+      },
+      async ({ parent_task_id, title, description }, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const task = await createSubtask(ctx, parent_task_id, title, description);
+          return ok({ task });
         } catch (err) {
           return toolError(err);
         }
