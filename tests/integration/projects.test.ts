@@ -85,4 +85,34 @@ d("first-class projects", () => {
     // child.id is kind='task', so the project gate (kind='project') rejects it → 404.
     await expect(listMyTasks(leadCtx, undefined, child!.id)).rejects.toMatchObject({ code: 404 });
   });
+
+  it("lead create_subtask assigns to another in-ws agent; foreign agent → 404", async () => {
+    const a = admin();
+    const { data: proj } = await a.from("tasks")
+      .insert({ workspace_id: lead.workspaceId, kind: "project",
+                assigned_agent_id: lead.agentId, title: "Proj X", status: "todo",
+                created_by_user_id: lead.userId })
+      .select("id").single();
+    const { data: ag2 } = await a.from("agents")
+      .insert({ workspace_id: lead.workspaceId, name: "ag2x",
+                api_key_hash: generateApiKey().hash, api_key_prefix: "yyyy2222" })
+      .select("id").single();
+
+    const { createSubtask } = await import("@/lib/agent-db");
+    const leadCtx = { agentId: lead.agentId, workspaceId: lead.workspaceId };
+
+    const child = await createSubtask(leadCtx, proj!.id, "do part", undefined, ag2!.id);
+    expect(child.assigned_agent_id).toBe(ag2!.id);
+    expect(child.kind).toBe("task");
+
+    // An agent id from another workspace must not be assignable → 404.
+    const foreign = await seedTenant(generateApiKey(), "foreign");
+    try {
+      await expect(
+        createSubtask(leadCtx, proj!.id, "leak", undefined, foreign.agentId)
+      ).rejects.toMatchObject({ code: 404 });
+    } finally {
+      await teardownTenant(foreign);
+    }
+  });
 });

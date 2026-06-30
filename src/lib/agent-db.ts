@@ -187,16 +187,17 @@ export async function listMyTasks(
 }
 
 /**
- * create_subtask(parent_task_id, title, description?) — create a child task on a
- * task the agent owns. Atomic via the create_subtask RPC (depth-2 cap + insert +
- * `created` event in one txn). Parent not owned/absent → 404; parent already a
- * child → 409; empty title → 400. Child inherits the parent's workspace + agent.
+ * create_subtask(parent_task_id, title, description?, assignee_agent_id?) — create
+ * a child task under a PROJECT the agent leads (spec P4). The child is kind='task'.
+ * assignee defaults to the lead; if given it must be an active in-workspace agent.
+ * Parent not a led project → 404; bad assignee → 404; empty title → 400.
  */
 export async function createSubtask(
   ctx: AgentContext,
   parentTaskId: string,
   title: string,
-  description?: string
+  description?: string,
+  assigneeAgentId?: string
 ): Promise<TaskRow> {
   if (!parentTaskId) throw badInput("parent_task_id required");
   if (typeof title !== "string" || !title.trim()) throw badInput("title required");
@@ -208,18 +209,19 @@ export async function createSubtask(
     p_description: description?.trim() || null,
     p_actor_type: "agent",
     p_actor_id: ctx.agentId,
-    p_created_by: null, // agent-created → no human creator (FK would reject an agent id)
-    p_require_agent: ctx.agentId, // parent must be assigned to this agent
+    p_created_by: null,
+    p_require_agent: ctx.agentId, // parent must be a project this agent leads
+    p_assignee: assigneeAgentId || null,
   });
 
   if (error) throw badInput(error.message);
   const res = data as
     | { ok: true; task: TaskRow }
-    | { ok: false; reason: "not_found" | "depth_exceeded" };
+    | { ok: false; reason: "not_found" | "bad_assignee" };
 
   if (res.ok) return res.task;
-  if (res.reason === "not_found") throw notFound();
-  throw illegalTransition("Cannot add a subtask to a subtask (max depth is 2)");
+  // Both "parent not a led project" and "assignee not in workspace" → 404 (never 403).
+  throw notFound();
 }
 
 /** Fetch one scoped task or throw 404 (not 403). Used to validate transitions. */
