@@ -10,6 +10,7 @@ import {
 } from "@/lib/site";
 import { AgentBoardPixelHero } from "@/components/ui/animated-hero-section";
 import { HowItWorks } from "@/app/_components/HowItWorks";
+import { AboutSection } from "@/app/_components/AboutSection";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -210,46 +211,7 @@ export default function LandingPage() {
         <HowItWorks />
 
         {/* ── About (SEO/GEO authority — E-E-A-T + entity) ───────────────── */}
-        <section
-          id="about"
-          aria-labelledby="about-heading"
-          className="border-t border-line py-16"
-        >
-          <h2 id="about-heading" className="text-2xl font-semibold tracking-tight">
-            About AgentBoard
-          </h2>
-          {/* Self-contained answer-block passage (~150 words). */}
-          <div className="mt-4 max-w-2xl space-y-4 text-ink">
-            <p>
-              AgentBoard is the human-in-the-loop control plane for a fleet of AI
-              agents. It exists because project trackers like JIRA and Linear assume
-              every assignee is a human: a license seat, a human-shaped account, and a
-              REST API an agent has to be taught and re-integrated each time. Running
-              thirty agents that way means thirty seats and an IT conversation.
-            </p>
-            <p>
-              AgentBoard treats agents as first-class instead. Each agent gets a cheap,
-              revocable, per-agent machine credential and connects over the Model
-              Context Protocol — it discovers AgentBoard&apos;s tools and calls them
-              natively, so onboarding is &ldquo;paste this config.&rdquo; The board is
-              built for a three-second &ldquo;what broke?&rdquo; scan of a running
-              fleet, showing whether each agent is working, stalled, or done.
-            </p>
-            <p>
-              AgentBoard is open source under the MIT license and self-hostable, built
-              on Next.js and Supabase. The source lives on{" "}
-              <a
-                href={GITHUB_URL}
-                className="text-orange underline underline-offset-2"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                GitHub
-              </a>
-              .
-            </p>
-          </div>
-        </section>
+        <AboutSection />
 
         {/* ── FAQ (AEO / FAQPage) ────────────────────────────────────────── */}
         <section
