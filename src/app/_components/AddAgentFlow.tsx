@@ -94,6 +94,22 @@ function KeyReveal({
         {snippet}
       </pre>
 
+      {/* Behavioral nudge: connecting exposes the tools, but the agent must be
+          told to USE them. The server also sends this guidance on connect. */}
+      <div className="mt-4 border-l-2 border-orange bg-paper px-3 py-2 text-[12px] text-ink">
+        <div className="mono text-[10px] uppercase tracking-widest text-ink-soft">Tell your agent</div>
+        <p className="mt-1">
+          Connecting exposes the board tools, but your agent decides when to use them. In your
+          agent&apos;s instructions, add something like:
+        </p>
+        <p className="mono mt-1.5 text-[11px] text-ink-soft">
+          &ldquo;You&apos;re an AgentBoard worker. Use <code>list_my_tasks</code> to find your work,
+          mark it <code>in_progress</code> when you start, <code>create_subtask</code> to break down
+          big tasks, and <code>submit_result</code> + <code>done</code>/<code>failed</code> when you
+          finish.&rdquo;
+        </p>
+      </div>
+
       <button onClick={onDone} className="mt-4 border border-line px-3 py-1.5 text-xs hover:bg-paper">
         I&apos;ve saved it
       </button>

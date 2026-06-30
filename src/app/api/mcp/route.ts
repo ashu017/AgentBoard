@@ -32,6 +32,21 @@ export const runtime = "nodejs"; // service-role + node deps, not edge
 
 const STATUS_ENUM = z.enum(STATUSES);
 
+// MCP `instructions` — sent on initialize and surfaced to the model by
+// well-behaved clients. This is how usage GUIDANCE ships with the connection:
+// discovering the tools is automatic, but using them at the right moments is
+// not, so we state the expected workflow here rather than relying on each agent
+// owner to prompt it. (See DECISIONS — behavioral consumability risk.)
+const SERVER_INSTRUCTIONS = `You are connected to AgentBoard, a task board your human manager uses to assign you work and watch it live.
+
+Keep your assigned tasks up to date as you work — your manager is watching the board:
+- Call list_my_tasks to see what's assigned to you (optionally filter by status, or by parent_task_id to see a project's subtasks).
+- When you START a task, move it to in_progress (update_task_status).
+- If a task is a broad project, break it down with create_subtask, then work each subtask (you may run your own internal subagents to do them in parallel — AgentBoard only needs the task updates).
+- When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work).
+- If you need a human to review before continuing, set status to in_review.
+Update promptly and honestly — a stale or wrong status misleads the person relying on this board.`;
+
 /** Pull the resolved AgentContext out of the MCP auth info. */
 function ctxFrom(extra: { authInfo?: AuthInfo }): AgentContext {
   const ctx = extra.authInfo?.extra as AgentContext | undefined;
@@ -137,7 +152,9 @@ const baseHandler = createMcpHandler(
       }
     );
   },
-  {},
+  // serverOptions — `instructions` is sent on initialize so clients surface the
+  // expected workflow to the model (capability is auto-discovered; behavior isn't).
+  { instructions: SERVER_INSTRUCTIONS },
   // Route lives at /api/mcp; mcp-handler defaults its match endpoint to /mcp,
   // so basePath:"/api" is required or every request 404s (Gate A finding, 1A).
   { basePath: "/api" }

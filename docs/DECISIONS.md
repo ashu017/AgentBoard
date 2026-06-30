@@ -612,6 +612,15 @@ see D-STATUS.)
 - **Remote MCP consumability:** the onboarding assumes the user's agent framework can
   consume a remote bearer-authed Streamable-HTTP MCP server (some clients may need a local
   proxy). The hardest user step; the MCP spike should confirm at least one target client.
+- **Behavioral consumability (connection ≠ correct usage):** connecting auto-*discovers* the
+  tools (MCP `tools/list`), but nothing forces an agent to *use* them at the right moments
+  (mark in_progress on start, submit_result on finish). **Partially mitigated 2026-06-30:**
+  the MCP server now sends an `instructions` string on initialize stating the expected
+  workflow (route.ts `SERVER_INSTRUCTIONS`), and the shown-once onboarding panel tells the
+  owner to add the same guidance to their agent's instructions. Both are *nudges* —
+  well-behaved clients surface server instructions to the model, but it's not enforceable;
+  a published agent-side skill/SDK (deferred) would steer harder. Still fundamentally up to
+  the owner's agent.
 - **Demand:** "managers want to hand-assign tasks to agents on a board" is the core bet,
   still unproven. Worth a rough demo in front of a few agent-runners before heavy build.
 - **Moat durability (see POSITION):** the agent-native/MCP wedge is a head start, not yet
