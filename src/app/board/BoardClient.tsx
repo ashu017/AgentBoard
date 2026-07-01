@@ -123,6 +123,7 @@ export function BoardClient({
         <NewMenu
           onProject={() => setShowNewProject(true)}
           onTask={() => { setTaskProjectId(null); setShowNew(true); }}
+          onAgent={() => setAddAgent(true)}
         />
       </div>
 
@@ -358,7 +359,7 @@ function TaskCard({
   );
 }
 
-function NewMenu({ onProject, onTask }: { onProject: () => void; onTask: () => void }) {
+function NewMenu({ onProject, onTask, onAgent }: { onProject: () => void; onTask: () => void; onAgent: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -379,6 +380,7 @@ function NewMenu({ onProject, onTask }: { onProject: () => void; onTask: () => v
         <div role="menu" className="absolute right-0 z-10 mt-1 w-36 border border-line bg-paper text-sm shadow">
           <button role="menuitem" onClick={() => { setOpen(false); onProject(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Project</button>
           <button role="menuitem" onClick={() => { setOpen(false); onTask(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Task</button>
+          <button role="menuitem" onClick={() => { setOpen(false); onAgent(); }} className="block w-full px-3 py-2 text-left hover:bg-paper-2">Agent</button>
         </div>
       )}
     </div>
