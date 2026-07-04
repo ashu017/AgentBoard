@@ -518,6 +518,25 @@ Realtime path under serverless conditions — Realtime runs as a Supabase-hosted
 (not a Vercel function), so a Vercel deploy is not required to exercise it, but the
 end-to-end board page on Vercel was not run (no deploy yet; Gate A still blocked).
 
+### D-RT-KEY — Browser client must use the anon JWT for Realtime (not the publishable key)
+**Status:** Active · 2026-07-04 · **regression fix**
+The human-plane browser client (`src/lib/supabase-browser.ts`) must be given the **legacy
+anon JWT** key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`), not the new-format
+`sb_publishable_*` key. Supabase Realtime's WebSocket **rejects** the `sb_publishable_*`
+key — the socket opens then immediately closes, yet the channel still reports `SUBSCRIBED`,
+so the board shows "● LIVE" but receives **zero** `postgres_changes` events and never
+updates without a hard refresh. REST/`fetch` accepts either key (that's why page loads and
+reads worked, masking the break). The client now prefers `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+and falls back to the publishable key (REST-only) if it's absent.
+**Why:** this is exactly the D9-RT silent-failure mode, but triggered by key *format* rather
+than RLS. D9-RT's Gate B passed in June specifically because it used the anon key; the app
+had since drifted to a publishable-only browser key, regressing live delivery. Reproduced +
+fixed 2026-07-04: with the publishable key an external INSERT never reached an open board;
+with the anon key it appeared live in <1s (verified same-workspace, to avoid the RLS
+cross-workspace confound). Secondary fix in the same change: `BoardClient` re-syncs its task
+state from the server prop on re-render (`useState(initialTasks)` only seeded at mount, so
+even `revalidatePath` couldn't refresh the board without a remount).
+
 ### D10 — Throttle `last_seen_at`
 **Status:** Active · 2026-06-26
 `last_seen_at` updates at most once per 30–60s per agent (skip if recent).
