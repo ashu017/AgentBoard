@@ -39,7 +39,11 @@ const TERMINAL: ReadonlySet<TaskStatus> = new Set<TaskStatus>(["done", "failed"]
 const TRANSITIONS: Readonly<Record<TaskStatus, ReadonlySet<TaskStatus>>> = {
   todo: new Set<TaskStatus>(["in_progress", "failed"]),
   in_progress: new Set<TaskStatus>(["in_review", "done", "failed", "todo"]),
-  in_review: new Set<TaskStatus>([]), // Level B (deferred) wires this.
+  // Interim (board-ux): a reviewed task can be sent to done (approved/merged) or
+  // back to in_progress (needs changes). This unblocks the board's In Review column
+  // now; the approval loop (feat/approval-loop, AL4b) will formalize this as a
+  // human-gated verdict with a reason. See DECISIONS D-INREVIEW-INTERIM.
+  in_review: new Set<TaskStatus>(["done", "in_progress", "failed"]),
   done: new Set<TaskStatus>([]),
   failed: new Set<TaskStatus>([]),
 };

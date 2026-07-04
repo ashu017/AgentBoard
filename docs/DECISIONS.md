@@ -454,6 +454,19 @@ classic drift where the API allows a move the UI can't render (DRY).
 **Why:** An agent submitting a result implies it started work; the cap protects Realtime
 payload size and board render.
 
+### D-INREVIEW-INTERIM — `in_review` can be resolved from the board (interim, pre-approval-loop)
+**Status:** Active · 2026-07-04 · **Interim — to be formalized by the approval loop (feat/approval-loop, AL4b)**
+`in_review` now has legal outgoing transitions in the SSOT: `in_review → {done, in_progress,
+failed}`. This unblocks the board's In Review column — a reviewed card can be dragged to Done
+(approved/merged), back to In Progress (needs changes), or Failed. Previously `in_review` was a
+dead end (Level B deferred), which stranded every reviewed task with no way to close it (hit
+in practice: tasks couldn't be marked done).
+**Why:** the board-ux drag-and-drop fix surfaced that reviewed tasks were unclosable. This is a
+minimal human-plane unblock. The approval loop (spec 2026-07-01-approval-loop-design.md) will
+supersede this with the fuller model: a human verdict (approve-continue / approve-close /
+reject) carrying a reason, and the agent plane blocked from self-closing a review (AL4b). Until
+then, any legal transition out of `in_review` is allowed to whoever can drive the board.
+
 ### D-PARALLEL — Agents work independent tasks in parallel; guidance is mechanism-agnostic
 **Status:** Active · 2026-07-04
 The north-star behavior is that an agent picks up its work, does it, and keeps the board

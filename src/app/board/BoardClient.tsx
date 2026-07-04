@@ -72,15 +72,16 @@ export function BoardClient({
 
   // Drop a dragged task into a status column: validate the transition, call the
   // move action, optimistically update local state so the card jumps immediately.
-  const moveTaskTo = async (task: BoardTask, to: TaskStatus) => {
-    if (task.status === to) return;
+  const moveTaskTo = async (taskId: string, to: TaskStatus) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || task.status === to) return;
     if (!canTransition(task.status, to)) {
       setMoveError(`Can't move "${task.title}" from ${STATUS_UI[task.status].label} to ${STATUS_UI[to].label}`);
       return;
     }
     setMoveError("");
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: to } : t)));
-    const res = await moveTaskAction(task.id, to);
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: to } : t)));
+    const res = await moveTaskAction(taskId, to);
     if (!res.ok) setMoveError(res.error ?? "Move failed");
   };
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
@@ -375,7 +376,7 @@ function ProjectLane({
   dragging: BoardTask | null;
   onDragStart: (task: BoardTask) => void;
   onDragEnd: () => void;
-  onDropTo: (task: BoardTask, to: TaskStatus) => void;
+  onDropTo: (taskId: string, to: TaskStatus) => void;
 }) {
   const lead = project.assigned_agent_id ? agents.get(project.assigned_agent_id) : undefined;
   const doneCount = tasks.filter((t) => t.status === "done").length;
@@ -447,8 +448,16 @@ function ProjectLane({
             <div
               key={status}
               aria-label={`${meta.label} column`}
-              onDragOver={(e) => { if (isLegalTarget) e.preventDefault(); }}
-              onDrop={(e) => { if (isLegalTarget && dragging) { e.preventDefault(); onDropTo(dragging, status); } }}
+              // Always allow the drop (preventDefault) so the browser permits it —
+              // gating this on async React `dragging` state raced the native drag
+              // events and made drops silently fail. Legality is enforced in the
+              // drop handler / moveTaskTo (SSOT), not here.
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const taskId = e.dataTransfer.getData("text/task-id");
+                if (taskId) onDropTo(taskId, status);
+              }}
               className={`border bg-paper ${isLegalTarget ? "border-orange ring-1 ring-orange" : meta.loud && colTasks.length > 0 ? "border-magenta" : "border-line"} ${quiet ? "opacity-80" : ""}`}
             >
               <h3 className="flex items-center justify-between border-b border-line px-2 py-1.5">
@@ -498,7 +507,14 @@ function TaskCard({
   return (
     <article
       draggable
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
+      onDragStart={(e) => {
+        // Put the task id in the drag payload synchronously — the drop handler
+        // reads this, so it never depends on async React state (the race that
+        // made drops fail). onDragStart(task) still drives the target highlight.
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/task-id", task.id);
+        onDragStart();
+      }}
       onDragEnd={onDragEnd}
       className="enter-fade clip-corner group cursor-grab border border-line bg-paper p-2.5 active:cursor-grabbing"
     >

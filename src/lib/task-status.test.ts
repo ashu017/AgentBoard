@@ -23,7 +23,10 @@ const LEGAL: ReadonlyArray<[TaskStatus, TaskStatus]> = [
   ["in_progress", "done"],
   ["in_progress", "failed"],
   ["in_progress", "todo"],
-  // in_review has NO legal outgoing transition yet (Level B deferred).
+  // in_review can be resolved (board-ux interim; approval loop AL4b will formalize).
+  ["in_review", "done"],
+  ["in_review", "in_progress"],
+  ["in_review", "failed"],
   // done / failed are terminal.
 ];
 
@@ -83,8 +86,12 @@ describe("task-status: canTransition — exhaustive matrix", () => {
     }
   });
 
-  it("in_review has no legal outgoing transition (Level B deferred)", () => {
-    for (const to of STATUSES) expect(canTransition("in_review", to)).toBe(false);
+  it("in_review resolves to done / in_progress / failed (board-ux interim), not to itself or todo", () => {
+    expect(canTransition("in_review", "done")).toBe(true);
+    expect(canTransition("in_review", "in_progress")).toBe(true);
+    expect(canTransition("in_review", "failed")).toBe(true);
+    expect(canTransition("in_review", "in_review")).toBe(false);
+    expect(canTransition("in_review", "todo")).toBe(false);
   });
 });
 
