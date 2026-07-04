@@ -122,7 +122,10 @@ export function Modal({
             </button>
           )}
         </div>
-        <div className="overflow-y-auto p-6 pt-4">{children}</div>
+        {/* min-w-0 + break-words stop a long unbreakable string (agent label,
+            pasted title) from forcing the body wider than the panel and creating
+            a horizontal scrollbar; overflow-x-hidden is the belt-and-braces. */}
+        <div className="min-w-0 overflow-y-auto overflow-x-hidden break-words p-6 pt-4">{children}</div>
       </div>
     </div>
   );

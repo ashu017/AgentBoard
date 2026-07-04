@@ -9,6 +9,8 @@ import {
   createProject as _createProject,
   updateTask as _updateTask,
   updateProject as _updateProject,
+  deleteTask as _deleteTask,
+  moveTask as _moveTask,
   type CreatedAgent,
   type CreatedProject,
 } from "@/lib/manager-actions";
@@ -145,5 +147,33 @@ export async function updateProjectAction(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to update project" };
+  }
+}
+
+export async function deleteTaskAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const taskId = String(formData.get("taskId") ?? "");
+    await _deleteTask(taskId);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete" };
+  }
+}
+
+/**
+ * Move a task to a new status (drag-and-drop). Called directly with args (not a
+ * form). Returns ActionResult so the board can surface an illegal-move error.
+ */
+export async function moveTaskAction(taskId: string, to: string): Promise<ActionResult> {
+  try {
+    await _moveTask(taskId, to);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to move task" };
   }
 }

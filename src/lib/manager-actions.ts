@@ -2,7 +2,7 @@ import "server-only";
 import { createServerSupabase } from "@/lib/supabase-server";
 import { getSession } from "@/lib/session";
 import { generateApiKey } from "@/lib/api-key";
-import { INITIAL_STATUS } from "@/lib/task-status";
+import { INITIAL_STATUS, isStatus, canTransition, type TaskStatus } from "@/lib/task-status";
 import { getOrCreateMiscProject } from "@/lib/projects";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,6 +264,51 @@ export async function updateTask(
   if (!data) throw new Error("Task not found in your workspace");
 }
 
+/**
+ * Move a task to a new status from the board (drag-and-drop, board-ux). Human
+ * plane, so it can drive any transition the SSOT allows (including in_review →
+ * *, which is the human's job). Validates against task-status.ts, writes the row
+ * + a `status_changed` event, RLS-scoped to the caller's workspace.
+ */
+export async function moveTask(taskId: string, to: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!taskId) throw new Error("A task id is required");
+  if (!isStatus(to)) throw new Error(`Unknown status: ${to}`);
+
+  const supabase = await createServerSupabase();
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id, status")
+    .eq("id", taskId)
+    .eq("workspace_id", session.workspace.id)
+    .maybeSingle();
+  if (!task) throw new Error("Task not found in your workspace");
+
+  const from = task.status as TaskStatus;
+  if (from === (to as TaskStatus)) return; // no-op (dropped in the same column)
+  if (!canTransition(from, to as TaskStatus)) {
+    throw new Error(`Can't move ${from} → ${to}`);
+  }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ status: to, updated_at: new Date().toISOString() })
+    .eq("id", taskId)
+    .eq("workspace_id", session.workspace.id);
+  if (error) throw new Error(`move failed: ${error.message}`);
+
+  const { error: evErr } = await supabase.from("task_events").insert({
+    task_id: taskId,
+    actor_type: "user",
+    actor_id: session.user.id,
+    event_type: "status_changed",
+    from_status: from,
+    to_status: to,
+  });
+  if (evErr) throw new Error(`move event failed: ${evErr.message}`);
+}
+
 export interface CreatedProject {
   id: string;
   title: string;
@@ -372,4 +417,37 @@ export async function updateProject(
     .maybeSingle();
   if (error) throw new Error(`update project failed: ${error.message}`);
   if (!data) throw new Error("Project not found in your workspace");
+}
+
+/**
+ * Delete a task (board-ux). RLS-scoped to the caller's workspace. Deleting a
+ * project cascades to its child tasks (tasks.parent_id is `on delete cascade`)
+ * and each task's events (task_events.task_id cascade) — so this one call handles
+ * both a leaf task and a whole project. Miscellaneous cannot be deleted (guarded).
+ */
+export async function deleteTask(taskId: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!taskId) throw new Error("A task id is required");
+
+  const supabase = await createServerSupabase();
+
+  // Guard: don't allow deleting the Miscellaneous system project.
+  const { data: row } = await supabase
+    .from("tasks")
+    .select("id, kind, title")
+    .eq("id", taskId)
+    .eq("workspace_id", session.workspace.id)
+    .maybeSingle();
+  if (!row) throw new Error("Not found in your workspace");
+  if (row.kind === "project" && row.title === "Miscellaneous") {
+    throw new Error("The Miscellaneous project can't be deleted");
+  }
+
+  const { error } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", taskId)
+    .eq("workspace_id", session.workspace.id);
+  if (error) throw new Error(`delete failed: ${error.message}`);
 }
