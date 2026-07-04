@@ -454,6 +454,25 @@ classic drift where the API allows a move the UI can't render (DRY).
 **Why:** An agent submitting a result implies it started work; the cap protects Realtime
 payload size and board render.
 
+### D-PARALLEL — Agents work independent tasks in parallel; guidance is mechanism-agnostic
+**Status:** Active · 2026-07-04
+The north-star behavior is that an agent picks up its work, does it, and keeps the board
+current — including working **independent tasks concurrently** so the manager sees several
+cards in flight at once. This is stated in the two behavioral-consumability nudge points:
+the MCP `SERVER_INSTRUCTIONS` (route.ts) and the onboarding wizard's "tell your agent"
+sample. The wording is deliberately **mechanism-agnostic** — "work independent tasks in
+parallel; how you parallelize (internal subagents, worktrees, threads) is up to your
+runtime" — because `SERVER_INSTRUCTIONS` is read by *any* MCP client (LangGraph, Codex,
+scripts), most of which don't have git worktrees. The per-task lifecycle discipline is
+unchanged: each task independently goes `todo → in_progress → done/failed`, updated as it
+happens, not batched.
+**Why:** naming a Claude-Code-specific mechanism (worktrees) in a cross-client instruction
+would mislead the majority of connected agents. Describe the *outcome* (parallel + live
+status); let each runtime choose the *mechanism*. The Claude-Code build-session convention
+that *does* name worktrees lives in `CLAUDE.md` ("Working in parallel"), scoped to our own
+runtime — restores the "internal subagents" spirit that the first-class-projects rewrite
+dropped from the instructions.
+
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
 **Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
 The board only receives an agent's live update if the agent-written (service-role) row

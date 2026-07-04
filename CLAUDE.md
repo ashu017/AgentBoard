@@ -56,6 +56,16 @@ in isolation, before any feature code:**
   for machine ids/keys/timestamps, color = status signal only, Failed is the only loud
   color. No AI-slop (no 3-col icon-circle grid, no purple gradients, no centered-everything).
 
+## Working in parallel (build sessions)
+
+When a session takes on multiple tasks that are genuinely independent (no shared files, no
+sequential dependency), isolate each in its own **git worktree** and work them in parallel,
+then land them as separate branches/PRs. Use a single branch when tasks are coupled (shared
+migration, shared types, or one builds on another) — parallel worktrees over coupled work
+just creates merge conflicts. This mirrors the north-star product behavior (agents work
+independent tasks concurrently, `docs/DECISIONS.md` D-PARALLEL) but is Claude-Code-specific:
+worktrees are our mechanism, not something baked into the agent-facing MCP instructions.
+
 ## Testing
 
 Target 100% coverage of the paths in `docs/design.md` → "Must-have tests". Security-

@@ -45,6 +45,7 @@ Keep your assigned tasks up to date as you work — your manager is watching the
 - Call list_my_tasks to see what's assigned to you (optionally filter by status, or by parent_task_id to see a project's subtasks).
 - When you START a task, move it to in_progress (update_task_status).
 - If you've been assigned a PROJECT, break it into tasks with create_subtask (call list_agents first if you want to delegate a subtask to another agent; otherwise it's assigned to you). Then work each task. You can read your whole project's progress with list_my_tasks(parent_task_id=<project id>), including tasks you delegated.
+- Tasks that don't depend on each other can be worked in PARALLEL — move each to in_progress when you actually start it and update each one independently, so the board reflects everything in flight at once. How you parallelize (internal subagents, worktrees, separate threads) is up to your runtime; AgentBoard only needs each task's status kept current.
 - When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work).
 - If you need a human to review before continuing, set status to in_review.
 Update promptly and honestly — a stale or wrong status misleads the person relying on this board.`;

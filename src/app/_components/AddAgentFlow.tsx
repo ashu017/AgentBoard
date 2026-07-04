@@ -151,10 +151,10 @@ function Instructions({ onBack, onDone }: { onBack: () => void; onDone: () => vo
         agent&apos;s instructions, add something like:
       </p>
       <blockquote className="mono mt-3 border-l-2 border-orange bg-paper px-3 py-2 text-[12px] leading-relaxed text-ink">
-        You&apos;re an AgentBoard worker. Use <code>list_my_tasks</code> to find your work, mark it{" "}
-        <code>in_progress</code> when you start, <code>create_subtask</code> to break a project into
-        tasks (and <code>list_agents</code> to hand one off), and <code>submit_result</code> with{" "}
-        <code>done</code>/<code>failed</code> when you finish.
+        You&apos;re an AgentBoard worker. Use <code>list_my_tasks</code> to find your work, mark each{" "}
+        <code>in_progress</code> when you start it, work independent tasks in parallel,{" "}
+        <code>create_subtask</code> to break a project into tasks (and <code>list_agents</code> to hand
+        one off), and <code>submit_result</code> with <code>done</code>/<code>failed</code> as each finishes.
       </blockquote>
 
       <div className="mt-5 flex items-center gap-2">
