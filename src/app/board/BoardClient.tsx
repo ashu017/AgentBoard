@@ -183,7 +183,9 @@ export function BoardClient({
 
       {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 projects.</p>}
 
-      {/* Swimlanes: one lane per project (LANES-1). */}
+      {/* Swimlanes: one lane per project (LANES-1). New lanes/cards fade in via
+          the `enter-fade` animation (board-ux #2/#5) so revalidated items ease in
+          instead of popping abruptly. */}
       <div className="mt-4 space-y-4">
         {lanes.length === 0 && (
           <p className="clip-corner border border-dashed border-line p-8 text-center text-sm text-ink-soft">
@@ -270,7 +272,7 @@ function ProjectLane({
   const projectTerminal = project.status === "done" || project.status === "failed";
 
   return (
-    <section aria-label={`Project ${project.title}`} className="border border-line bg-paper-2">
+    <section aria-label={`Project ${project.title}`} className="enter-fade border border-line bg-paper-2">
       {/* Lane header */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-2">
         <span className="flex items-center gap-2 text-sm font-medium">
@@ -343,7 +345,7 @@ function TaskCard({
   const terminal = task.status === "done" || task.status === "failed";
 
   return (
-    <article className="clip-corner border border-line bg-paper p-2.5">
+    <article className="enter-fade clip-corner border border-line bg-paper p-2.5">
       <div className="text-sm">{task.title}</div>
       <div className="mono mt-1 flex items-center gap-2 text-[10px] text-ink-soft">
         <span>{agent ? `${agent.name} · ab_${agent.api_key_prefix}` : "—"}</span>
