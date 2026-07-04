@@ -643,9 +643,9 @@ function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () =>
 
   return (
     <form action={formAction}>
-      <div className="grid gap-3">
-        <input name="title" required placeholder="Project title" className="border border-line bg-paper px-3 py-2 text-sm" />
-        <select name="leadAgentId" aria-label="Lead agent" defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
+      <div className="grid w-full gap-3">
+        <input name="title" required placeholder="Project title" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <select name="leadAgentId" aria-label="Lead agent" defaultValue="" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
           <option value="">Unassigned (no lead agent)</option>
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
@@ -655,7 +655,7 @@ function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () =>
             No agents yet — you can create the project now and assign a lead (and tasks) once you add one.
           </p>
         )}
-        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
       <div className="mt-4 flex gap-2">
@@ -682,18 +682,18 @@ function NewTaskPanel({ agents, projects, defaultProjectId, onDone }: { agents: 
 
   return (
     <form action={formAction}>
-      <div className="grid gap-3">
-        <select name="projectId" aria-label="Project" defaultValue={initialProject} className="border border-line bg-paper px-3 py-2 text-sm">
+      <div className="grid w-full gap-3">
+        <select name="projectId" aria-label="Project" defaultValue={initialProject} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
           {projects.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}
         </select>
-        <input name="title" required placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
-        <select name="assignedAgentId" required defaultValue="" className="border border-line bg-paper px-3 py-2 text-sm">
+        <input name="title" required placeholder="Task title" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <select name="assignedAgentId" required defaultValue="" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
           <option value="" disabled>Assign to…</option>
           {active.map((a) => (
             <option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>
           ))}
         </select>
-        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+        <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
       <div className="mt-4 flex gap-2">
@@ -716,9 +716,9 @@ function EditTaskPanel({ task, onDone }: { task: BoardTask; onDone: () => void }
   return (
     <form action={formAction}>
       <input type="hidden" name="taskId" value={task.id} />
-      <div className="grid gap-3">
-        <input name="title" required defaultValue={task.title} placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
-        <textarea name="description" defaultValue={task.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+      <div className="grid w-full gap-3">
+        <input name="title" required defaultValue={task.title} placeholder="Task title" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <textarea name="description" defaultValue={task.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
       <div className="mt-4 flex gap-2">
@@ -742,13 +742,13 @@ function EditProjectPanel({ project, agents, onDone }: { project: BoardTask; age
   return (
     <form action={formAction}>
       <input type="hidden" name="projectId" value={project.id} />
-      <div className="grid gap-3">
-        <input name="title" required defaultValue={project.title} placeholder="Project title" className="border border-line bg-paper px-3 py-2 text-sm" />
-        <select name="leadAgentId" aria-label="Lead agent" defaultValue={project.assigned_agent_id ?? ""} className="border border-line bg-paper px-3 py-2 text-sm">
+      <div className="grid w-full gap-3">
+        <input name="title" required defaultValue={project.title} placeholder="Project title" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <select name="leadAgentId" aria-label="Lead agent" defaultValue={project.assigned_agent_id ?? ""} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
           <option value="">Unassigned (no lead agent)</option>
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
-        <textarea name="description" defaultValue={project.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+        <textarea name="description" defaultValue={project.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
       <div className="mt-4 flex gap-2">
