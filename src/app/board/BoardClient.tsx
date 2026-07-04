@@ -55,6 +55,17 @@ export function BoardClient({
 }) {
   const [tasks, setTasks] = useState<BoardTask[]>(initialTasks);
   const [live, setLive] = useState(false);
+  // Re-seed local state when the server sends a fresh snapshot (after a create/
+  // edit revalidatePath("/board") or filter navigation). useState reads its
+  // initial value only at mount, so without this the board showed stale data
+  // until a hard refresh even though the server re-rendered with new rows. The
+  // server snapshot is authoritative; Realtime updates layer on top between
+  // navigations. (Intentional prop→state sync — the lint rule flags the generic
+  // case, but re-syncing to a fresh server render is the correct behavior here.)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTasks(initialTasks);
+  }, [initialTasks]);
   const [announce, setAnnounce] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
@@ -102,16 +113,33 @@ export function BoardClient({
       if (data) setTasks(data as BoardTask[]);
     }
 
-    const channel = supabase
-      .channel("board-tasks")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (payload) => {
-        const row = payload.new as Partial<BoardTask> | undefined;
-        if (row?.title && row.status) setAnnounce(`Task ${row.title} moved to ${STATUS_UI[row.status as TaskStatus].label}`);
-        void refetch();
-      })
-      .subscribe((s) => setLive(s === "SUBSCRIBED"));
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
 
-    return () => void supabase.removeChannel(channel);
+    // Realtime under RLS: postgres_changes on `tasks` only reach this client if the
+    // realtime socket carries the user's JWT (else RLS silently filters EVERY event
+    // and the board looks connected but never updates — DECISIONS D9-RT). The anon/
+    // publishable key alone fails the owner_user_id = auth.uid() policy, so we must
+    // hand the session token to the realtime client before subscribing.
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session?.access_token) supabase.realtime.setAuth(session.access_token);
+
+      channel = supabase
+        .channel("board-tasks")
+        .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, (payload) => {
+          const row = payload.new as Partial<BoardTask> | undefined;
+          if (row?.title && row.status) setAnnounce(`Task ${row.title} moved to ${STATUS_UI[row.status as TaskStatus].label}`);
+          void refetch();
+        })
+        .subscribe((s) => setLive(s === "SUBSCRIBED"));
+    })();
+
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   // Split into lanes (top-level projects) and their child tasks grouped by parent.
