@@ -3,7 +3,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { STATUSES, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
-import { createTaskAction, createProjectAction, type ActionResult } from "@/app/actions";
+import { createTaskAction, createProjectAction, updateTaskAction, updateProjectAction, type ActionResult } from "@/app/actions";
 import type { BoardTask, AgentRow, BoardFilters, TimeWindow, StatusFilter, ProjectOption } from "@/lib/manager-queries";
 import type { CreatedProject } from "@/lib/manager-actions";
 import { Modal } from "@/app/_components/Modal";
@@ -43,6 +43,9 @@ export function BoardClient({
   const [addAgent, setAddAgent] = useState(false);
   // When set, the New Task modal opens pre-scoped to this project (lane "+ task").
   const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
+  // The task / project currently being edited (board-ux #3 / #4).
+  const [editTask, setEditTask] = useState<BoardTask | null>(null);
+  const [editProject, setEditProject] = useState<BoardTask | null>(null);
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   // Live board: subscribe to tasks changes, refetch snapshot on each (D9 pattern).
@@ -181,9 +184,33 @@ export function BoardClient({
         <NewProjectPanel agents={agents} onDone={() => setShowNewProject(false)} />
       </Modal>
 
+      {/* Edit task — name + description (board-ux #3). */}
+      <Modal
+        open={Boolean(editTask)}
+        onClose={() => setEditTask(null)}
+        title="Edit task"
+        systemTag="SYS:: EDIT TASK"
+        blurBackdrop
+      >
+        {editTask && <EditTaskPanel task={editTask} onDone={() => setEditTask(null)} />}
+      </Modal>
+
+      {/* Edit project — name, lead agent, description (board-ux #4). */}
+      <Modal
+        open={Boolean(editProject)}
+        onClose={() => setEditProject(null)}
+        title="Edit project"
+        systemTag="SYS:: EDIT PROJECT"
+        blurBackdrop
+      >
+        {editProject && <EditProjectPanel project={editProject} agents={agents} onDone={() => setEditProject(null)} />}
+      </Modal>
+
       {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 projects.</p>}
 
-      {/* Swimlanes: one lane per project (LANES-1). */}
+      {/* Swimlanes: one lane per project (LANES-1). New lanes/cards fade in via
+          the `enter-fade` animation (board-ux #2/#5) so revalidated items ease in
+          instead of popping abruptly. */}
       <div className="mt-4 space-y-4">
         {lanes.length === 0 && (
           <p className="clip-corner border border-dashed border-line p-8 text-center text-sm text-ink-soft">
@@ -197,6 +224,8 @@ export function BoardClient({
             tasks={childrenByParent.get(project.id) ?? []}
             agents={agentMap}
             onAddTask={() => openTaskForProject(project.id)}
+            onEditProject={() => setEditProject(project)}
+            onEditTask={setEditTask}
           />
         ))}
       </div>
@@ -259,18 +288,22 @@ function ProjectLane({
   tasks,
   agents,
   onAddTask,
+  onEditProject,
+  onEditTask,
 }: {
   project: BoardTask;
   tasks: BoardTask[];
   agents: Map<string, AgentRow>;
   onAddTask: () => void;
+  onEditProject: () => void;
+  onEditTask: (task: BoardTask) => void;
 }) {
   const lead = project.assigned_agent_id ? agents.get(project.assigned_agent_id) : undefined;
   const doneCount = tasks.filter((t) => t.status === "done").length;
   const projectTerminal = project.status === "done" || project.status === "failed";
 
   return (
-    <section aria-label={`Project ${project.title}`} className="border border-line bg-paper-2">
+    <section aria-label={`Project ${project.title}`} className="enter-fade border border-line bg-paper-2">
       {/* Lane header */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-3 py-2">
         <span className="flex items-center gap-2 text-sm font-medium">
@@ -292,6 +325,17 @@ function ProjectLane({
             className="mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
           >
             + task
+          </button>
+        )}
+        {/* Edit project — rightmost of the lane row (board-ux #4). Miscellaneous
+            is the system catch-all and isn't editable. */}
+        {project.title !== "Miscellaneous" && (
+          <button
+            onClick={onEditProject}
+            aria-label={`Edit project ${project.title}`}
+            className="mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
+          >
+            edit
           </button>
         )}
       </div>
@@ -320,7 +364,7 @@ function ProjectLane({
                   <p className="px-1 py-2 text-center text-[10px] text-ink-soft">—</p>
                 )}
                 {colTasks.map((t) => (
-                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} />
+                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} onEdit={() => onEditTask(t)} />
                 ))}
               </div>
             </div>
@@ -335,15 +379,17 @@ function TaskCard({
   task,
   agent,
   loud,
+  onEdit,
 }: {
   task: BoardTask;
   agent?: AgentRow;
   loud?: boolean;
+  onEdit: () => void;
 }) {
   const terminal = task.status === "done" || task.status === "failed";
 
   return (
-    <article className="clip-corner border border-line bg-paper p-2.5">
+    <article className="enter-fade clip-corner group border border-line bg-paper p-2.5">
       <div className="text-sm">{task.title}</div>
       <div className="mono mt-1 flex items-center gap-2 text-[10px] text-ink-soft">
         <span>{agent ? `${agent.name} · ab_${agent.api_key_prefix}` : "—"}</span>
@@ -355,6 +401,17 @@ function TaskCard({
           → {task.result}
         </div>
       )}
+
+      {/* Edit task name/description — bottom-right of the card (board-ux #3). */}
+      <div className="mt-1.5 flex justify-end">
+        <button
+          onClick={onEdit}
+          aria-label={`Edit task ${task.title}`}
+          className="mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
+        >
+          edit
+        </button>
+      </div>
     </article>
   );
 }
@@ -454,6 +511,61 @@ function NewTaskPanel({ agents, projects, defaultProjectId, onDone }: { agents: 
       <div className="mt-4 flex gap-2">
         <button type="submit" disabled={pending} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
           {pending ? "Creating…" : "Create + assign"}
+        </button>
+        <button type="button" onClick={onDone} className="border border-line px-4 py-2 text-sm">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function EditTaskPanel({ task, onDone }: { task: BoardTask; onDone: () => void }) {
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(updateTaskAction, null);
+
+  useEffect(() => {
+    if (state?.ok) onDone();
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="taskId" value={task.id} />
+      <div className="grid gap-3">
+        <input name="title" required defaultValue={task.title} placeholder="Task title" className="border border-line bg-paper px-3 py-2 text-sm" />
+        <textarea name="description" defaultValue={task.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+      </div>
+      {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
+      <div className="mt-4 flex gap-2">
+        <button type="submit" disabled={pending} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
+          {pending ? "Saving…" : "Save changes"}
+        </button>
+        <button type="button" onClick={onDone} className="border border-line px-4 py-2 text-sm">Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function EditProjectPanel({ project, agents, onDone }: { project: BoardTask; agents: AgentRow[]; onDone: () => void }) {
+  const active = agents.filter((a) => !a.revoked_at);
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(updateProjectAction, null);
+
+  useEffect(() => {
+    if (state?.ok) onDone();
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="projectId" value={project.id} />
+      <div className="grid gap-3">
+        <input name="title" required defaultValue={project.title} placeholder="Project title" className="border border-line bg-paper px-3 py-2 text-sm" />
+        <select name="leadAgentId" aria-label="Lead agent" defaultValue={project.assigned_agent_id ?? ""} className="border border-line bg-paper px-3 py-2 text-sm">
+          <option value="">Unassigned (no lead agent)</option>
+          {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
+        </select>
+        <textarea name="description" defaultValue={project.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full border border-line bg-paper px-3 py-2 text-sm" />
+      </div>
+      {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
+      <div className="mt-4 flex gap-2">
+        <button type="submit" disabled={pending} className="bg-orange px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
+          {pending ? "Saving…" : "Save changes"}
         </button>
         <button type="button" onClick={onDone} className="border border-line px-4 py-2 text-sm">Cancel</button>
       </div>

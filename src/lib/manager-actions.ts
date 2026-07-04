@@ -232,6 +232,38 @@ export async function createChildTask(
   return task as CreatedTask;
 }
 
+/**
+ * Edit a task's title + description (board-ux #3). Runs under the user's RLS
+ * session, so the update only matches a task in the caller's workspace (a foreign
+ * id updates nothing). Only the editable text fields — status/assignee/parent are
+ * unchanged. `updated_at` is bumped so the board reorders/refreshes.
+ */
+export async function updateTask(
+  taskId: string,
+  title: string,
+  description?: string
+): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!taskId) throw new Error("A task id is required");
+  if (!title.trim()) throw new Error("Task title is required");
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      title: title.trim(),
+      description: description?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId)
+    .eq("workspace_id", session.workspace.id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`update task failed: ${error.message}`);
+  if (!data) throw new Error("Task not found in your workspace");
+}
+
 export interface CreatedProject {
   id: string;
   title: string;
@@ -292,4 +324,52 @@ export async function createProject(
     throw new Error(`create project event failed: ${evErr.message}`);
   }
   return project as CreatedProject;
+}
+
+/**
+ * Edit a project's title, description, and lead agent (board-ux #4). Runs under
+ * the user's RLS session (only matches a project in the caller's workspace).
+ * leadAgentId "" clears the lead (unassigned, allowed for projects — P2); a given
+ * id must be an active in-workspace agent. Only edits the project row; child tasks
+ * keep their own assignees. `updated_at` bumped so the lane refreshes.
+ */
+export async function updateProject(
+  projectId: string,
+  title: string,
+  leadAgentId?: string,
+  description?: string
+): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!projectId) throw new Error("A project id is required");
+  if (!title.trim()) throw new Error("Project title is required");
+
+  const supabase = await createServerSupabase();
+
+  if (leadAgentId) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id, revoked_at")
+      .eq("id", leadAgentId)
+      .eq("workspace_id", session.workspace.id)
+      .maybeSingle();
+    if (!agent) throw new Error("Lead agent not found in your workspace");
+    if (agent.revoked_at) throw new Error("Cannot assign a project to a revoked agent");
+  }
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({
+      title: title.trim(),
+      description: description?.trim() || null,
+      assigned_agent_id: leadAgentId || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", projectId)
+    .eq("workspace_id", session.workspace.id)
+    .eq("kind", "project")
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`update project failed: ${error.message}`);
+  if (!data) throw new Error("Project not found in your workspace");
 }

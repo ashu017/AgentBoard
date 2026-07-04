@@ -85,3 +85,27 @@ body {
     transform: translateX(100%);
   }
 }
+
+/* Enter animation for newly-rendered board items (project lanes, task cards).
+   After a create, the server revalidates and the new row would otherwise pop in
+   abruptly; this eases it in (fade + slight rise) so the board updates smoothly.
+   Applied on mount, so it also plays for items arriving via a Realtime refetch.
+   Respects reduced-motion. (board-ux #2/#5) */
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.enter-fade {
+  animation: enter-fade 0.28s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .enter-fade {
+    animation: none;
+  }
+}

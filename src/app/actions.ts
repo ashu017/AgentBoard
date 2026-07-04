@@ -7,6 +7,8 @@ import {
   createTask as _createTask,
   createChildTask as _createChildTask,
   createProject as _createProject,
+  updateTask as _updateTask,
+  updateProject as _updateProject,
   type CreatedAgent,
   type CreatedProject,
 } from "@/lib/manager-actions";
@@ -110,5 +112,38 @@ export async function createChildTaskAction(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to add subtask" };
+  }
+}
+
+export async function updateTaskAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const taskId = String(formData.get("taskId") ?? "");
+    const title = String(formData.get("title") ?? "");
+    const description = String(formData.get("description") ?? "");
+    await _updateTask(taskId, title, description);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update task" };
+  }
+}
+
+export async function updateProjectAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const projectId = String(formData.get("projectId") ?? "");
+    const title = String(formData.get("title") ?? "");
+    const leadAgentId = String(formData.get("leadAgentId") ?? "");
+    const description = String(formData.get("description") ?? "");
+    await _updateProject(projectId, title, leadAgentId || undefined, description);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update project" };
   }
 }
