@@ -1,9 +1,9 @@
 "use client";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
-import { STATUSES, type TaskStatus } from "@/lib/task-status";
+import { STATUSES, canTransition, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
-import { createTaskAction, createProjectAction, updateTaskAction, updateProjectAction, type ActionResult } from "@/app/actions";
+import { createTaskAction, createProjectAction, updateTaskAction, updateProjectAction, deleteTaskAction, moveTaskAction, type ActionResult } from "@/app/actions";
 import type { BoardTask, AgentRow, BoardFilters, TimeWindow, StatusFilter, ProjectOption } from "@/lib/manager-queries";
 import type { CreatedProject } from "@/lib/manager-actions";
 import { Modal } from "@/app/_components/Modal";
@@ -15,6 +15,24 @@ function relative(iso: string): string {
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
+}
+
+/** Small pencil (edit) glyph — inline SVG, no icon dependency. */
+function EditIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11.5 2.5l2 2L6 12l-2.5.5.5-2.5 7.5-7.5z" />
+    </svg>
+  );
+}
+
+/** Small trash (delete) glyph — inline SVG, no icon dependency. */
+function TrashIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 4h11M6 4V2.5h4V4M4 4l.5 9h7l.5-9M6.5 6.5v4.5M9.5 6.5v4.5" />
+    </svg>
+  );
 }
 
 const WINDOW_LABELS: Record<TimeWindow, string> = { "2w": "Last 2 weeks", "30d": "Last 30 days", "90d": "Last 90 days", all: "All time" };
@@ -46,6 +64,25 @@ export function BoardClient({
   // The task / project currently being edited (board-ux #3 / #4).
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
   const [editProject, setEditProject] = useState<BoardTask | null>(null);
+  // The task/project pending delete-confirmation (board-ux).
+  const [confirmDelete, setConfirmDelete] = useState<BoardTask | null>(null);
+  // Drag-and-drop: the task being dragged (board-ux). Drives legal-target highlighting.
+  const [dragging, setDragging] = useState<BoardTask | null>(null);
+  const [moveError, setMoveError] = useState("");
+
+  // Drop a dragged task into a status column: validate the transition, call the
+  // move action, optimistically update local state so the card jumps immediately.
+  const moveTaskTo = async (task: BoardTask, to: TaskStatus) => {
+    if (task.status === to) return;
+    if (!canTransition(task.status, to)) {
+      setMoveError(`Can't move "${task.title}" from ${STATUS_UI[task.status].label} to ${STATUS_UI[to].label}`);
+      return;
+    }
+    setMoveError("");
+    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: to } : t)));
+    const res = await moveTaskAction(task.id, to);
+    if (!res.ok) setMoveError(res.error ?? "Move failed");
+  };
   const agentMap = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
 
   // Live board: subscribe to tasks changes, refetch snapshot on each (D9 pattern).
@@ -112,6 +149,14 @@ export function BoardClient({
     <main className="p-5">
       <div aria-live="polite" className="sr-only">{announce}</div>
 
+      {/* Illegal-move feedback for drag-and-drop (board-ux). */}
+      {moveError && (
+        <div role="alert" className="mono mb-2 flex items-center gap-2 border border-magenta bg-paper px-3 py-1.5 text-[11px] text-magenta">
+          {moveError}
+          <button onClick={() => setMoveError("")} aria-label="Dismiss" className="ml-auto">✕</button>
+        </div>
+      )}
+
       {/* Scan summary line + New menu */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="mono flex items-center gap-3 text-xs">
@@ -150,6 +195,7 @@ export function BoardClient({
         title={noAgents ? "No agents on duty" : "New task"}
         systemTag={noAgents ? "SYS:: NOBODY HOME" : "SYS:: ASSIGN"}
         blurBackdrop
+        size="lg"
       >
         {noAgents ? (
           <div>
@@ -180,6 +226,7 @@ export function BoardClient({
         title="New project"
         systemTag="SYS:: NEW PROJECT"
         blurBackdrop
+        size="lg"
       >
         <NewProjectPanel agents={agents} onDone={() => setShowNewProject(false)} />
       </Modal>
@@ -191,6 +238,7 @@ export function BoardClient({
         title="Edit task"
         systemTag="SYS:: EDIT TASK"
         blurBackdrop
+        size="lg"
       >
         {editTask && <EditTaskPanel task={editTask} onDone={() => setEditTask(null)} />}
       </Modal>
@@ -202,8 +250,21 @@ export function BoardClient({
         title="Edit project"
         systemTag="SYS:: EDIT PROJECT"
         blurBackdrop
+        size="lg"
       >
         {editProject && <EditProjectPanel project={editProject} agents={agents} onDone={() => setEditProject(null)} />}
+      </Modal>
+
+      {/* Delete confirmation — tasks and projects (board-ux). Deleting a project
+          also removes its tasks (DB cascade). */}
+      <Modal
+        open={Boolean(confirmDelete)}
+        onClose={() => setConfirmDelete(null)}
+        title={confirmDelete?.kind === "project" ? "Delete project?" : "Delete task?"}
+        systemTag="SYS:: CONFIRM DELETE"
+        blurBackdrop
+      >
+        {confirmDelete && <DeleteConfirmPanel item={confirmDelete} onDone={() => setConfirmDelete(null)} />}
       </Modal>
 
       {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 projects.</p>}
@@ -226,6 +287,12 @@ export function BoardClient({
             onAddTask={() => openTaskForProject(project.id)}
             onEditProject={() => setEditProject(project)}
             onEditTask={setEditTask}
+            onDeleteProject={() => setConfirmDelete(project)}
+            onDeleteTask={setConfirmDelete}
+            dragging={dragging}
+            onDragStart={setDragging}
+            onDragEnd={() => setDragging(null)}
+            onDropTo={moveTaskTo}
           />
         ))}
       </div>
@@ -290,6 +357,12 @@ function ProjectLane({
   onAddTask,
   onEditProject,
   onEditTask,
+  onDeleteProject,
+  onDeleteTask,
+  dragging,
+  onDragStart,
+  onDragEnd,
+  onDropTo,
 }: {
   project: BoardTask;
   tasks: BoardTask[];
@@ -297,6 +370,12 @@ function ProjectLane({
   onAddTask: () => void;
   onEditProject: () => void;
   onEditTask: (task: BoardTask) => void;
+  onDeleteProject: () => void;
+  onDeleteTask: (task: BoardTask) => void;
+  dragging: BoardTask | null;
+  onDragStart: (task: BoardTask) => void;
+  onDragEnd: () => void;
+  onDropTo: (task: BoardTask, to: TaskStatus) => void;
 }) {
   const lead = project.assigned_agent_id ? agents.get(project.assigned_agent_id) : undefined;
   const doneCount = tasks.filter((t) => t.status === "done").length;
@@ -327,16 +406,27 @@ function ProjectLane({
             + task
           </button>
         )}
-        {/* Edit project — rightmost of the lane row (board-ux #4). Miscellaneous
+        {/* Edit project — icon, rightmost of the lane row (board-ux #4). Miscellaneous
             is the system catch-all and isn't editable. */}
         {project.title !== "Miscellaneous" && (
-          <button
-            onClick={onEditProject}
-            aria-label={`Edit project ${project.title}`}
-            className="mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
-          >
-            edit
-          </button>
+          <>
+            <button
+              onClick={onEditProject}
+              aria-label={`Edit project ${project.title}`}
+              title="Edit project"
+              className="text-ink-soft hover:text-orange"
+            >
+              <EditIcon />
+            </button>
+            <button
+              onClick={onDeleteProject}
+              aria-label={`Delete project ${project.title}`}
+              title="Delete project"
+              className="text-ink-soft hover:text-magenta"
+            >
+              <TrashIcon />
+            </button>
+          </>
         )}
       </div>
 
@@ -346,11 +436,20 @@ function ProjectLane({
           const meta = STATUS_UI[status];
           const colTasks = tasks.filter((t) => t.status === status);
           const quiet = status === "done";
+          // This column is a legal drop target iff a card from THIS lane is being
+          // dragged, it's a different status, and the transition is allowed (SSOT).
+          const isLegalTarget =
+            !!dragging &&
+            dragging.parent_id === project.id &&
+            dragging.status !== status &&
+            canTransition(dragging.status, status);
           return (
             <div
               key={status}
               aria-label={`${meta.label} column`}
-              className={`border bg-paper ${meta.loud && colTasks.length > 0 ? "border-magenta" : "border-line"} ${quiet ? "opacity-80" : ""}`}
+              onDragOver={(e) => { if (isLegalTarget) e.preventDefault(); }}
+              onDrop={(e) => { if (isLegalTarget && dragging) { e.preventDefault(); onDropTo(dragging, status); } }}
+              className={`border bg-paper ${isLegalTarget ? "border-orange ring-1 ring-orange" : meta.loud && colTasks.length > 0 ? "border-magenta" : "border-line"} ${quiet ? "opacity-80" : ""}`}
             >
               <h3 className="flex items-center justify-between border-b border-line px-2 py-1.5">
                 <span className="flex items-center gap-1.5 text-[11px] font-medium">
@@ -361,10 +460,12 @@ function ProjectLane({
               </h3>
               <div className="space-y-2 p-2">
                 {colTasks.length === 0 && (
-                  <p className="px-1 py-2 text-center text-[10px] text-ink-soft">—</p>
+                  <p className="px-1 py-2 text-center text-[10px] text-ink-soft">
+                    {isLegalTarget ? "drop here" : "—"}
+                  </p>
                 )}
                 {colTasks.map((t) => (
-                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} onEdit={() => onEditTask(t)} />
+                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} onEdit={() => onEditTask(t)} onDelete={() => onDeleteTask(t)} onDragStart={() => onDragStart(t)} onDragEnd={onDragEnd} />
                 ))}
               </div>
             </div>
@@ -380,20 +481,48 @@ function TaskCard({
   agent,
   loud,
   onEdit,
+  onDelete,
+  onDragStart,
+  onDragEnd,
 }: {
   task: BoardTask;
   agent?: AgentRow;
   loud?: boolean;
   onEdit: () => void;
+  onDelete: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }) {
   const terminal = task.status === "done" || task.status === "failed";
 
   return (
-    <article className="enter-fade clip-corner group border border-line bg-paper p-2.5">
+    <article
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(); }}
+      onDragEnd={onDragEnd}
+      className="enter-fade clip-corner group cursor-grab border border-line bg-paper p-2.5 active:cursor-grabbing"
+    >
       <div className="text-sm">{task.title}</div>
+      {/* Agent name (no id — board-ux) · time · inline edit icon (board-ux). */}
       <div className="mono mt-1 flex items-center gap-2 text-[10px] text-ink-soft">
-        <span>{agent ? `${agent.name} · ab_${agent.api_key_prefix}` : "—"}</span>
-        <span className="ml-auto">{relative(task.updated_at)}</span>
+        <span className="truncate">{agent ? agent.name : "—"}</span>
+        <span className="ml-auto shrink-0">{relative(task.updated_at)}</span>
+        <button
+          onClick={onEdit}
+          aria-label={`Edit task ${task.title}`}
+          title="Edit task"
+          className="shrink-0 text-ink-soft hover:text-orange"
+        >
+          <EditIcon />
+        </button>
+        <button
+          onClick={onDelete}
+          aria-label={`Delete task ${task.title}`}
+          title="Delete task"
+          className="shrink-0 text-ink-soft hover:text-magenta"
+        >
+          <TrashIcon />
+        </button>
       </div>
 
       {terminal && task.result && (
@@ -401,18 +530,33 @@ function TaskCard({
           → {task.result}
         </div>
       )}
-
-      {/* Edit task name/description — bottom-right of the card (board-ux #3). */}
-      <div className="mt-1.5 flex justify-end">
-        <button
-          onClick={onEdit}
-          aria-label={`Edit task ${task.title}`}
-          className="mono text-[10px] uppercase tracking-widest text-ink-soft hover:text-orange"
-        >
-          edit
-        </button>
-      </div>
     </article>
+  );
+}
+
+function DeleteConfirmPanel({ item, onDone }: { item: BoardTask; onDone: () => void }) {
+  const isProject = item.kind === "project";
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(deleteTaskAction, null);
+
+  useEffect(() => {
+    if (state?.ok) onDone();
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="taskId" value={item.id} />
+      <p className="text-sm text-ink">
+        Delete <span className="font-semibold">{item.title}</span>?
+        {isProject && " This also deletes every task in the project."} This can&apos;t be undone.
+      </p>
+      {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
+      <div className="mt-4 flex gap-2">
+        <button type="submit" disabled={pending} className="bg-magenta px-4 py-2 text-sm font-medium text-paper disabled:opacity-60">
+          {pending ? "Deleting…" : isProject ? "Delete project" : "Delete task"}
+        </button>
+        <button type="button" onClick={onDone} className="border border-line px-4 py-2 text-sm">Cancel</button>
+      </div>
+    </form>
   );
 }
 
