@@ -94,14 +94,18 @@ export function Modal({
         onClick={closeOnBackdrop ? onClose : undefined}
         aria-hidden="true"
       />
-      {/* Panel */}
+      {/* Panel — capped at 90vh and a flex column: the header stays put while a
+          taller body scrolls INSIDE the panel. Without the cap, a modal taller
+          than a short viewport gets vertically centered and clipped at both ends
+          with no way to reach the hidden content (the "form overflows the modal"
+          bug). */}
       <div
         ref={panelRef}
-        className={`clip-corner relative w-full border border-line bg-paper-2 p-6 shadow-xl ${
+        className={`clip-corner relative flex max-h-[90vh] w-full flex-col border border-line bg-paper-2 shadow-xl ${
           size === "lg" ? "max-w-2xl" : "max-w-md"
         }`}
       >
-        <div className="flex items-start justify-between">
+        <div className="flex shrink-0 items-start justify-between p-6 pb-0">
           <div>
             {systemTag && (
               <div className="mono text-[11px] uppercase tracking-[0.2em] text-orange">{systemTag}</div>
@@ -118,7 +122,7 @@ export function Modal({
             </button>
           )}
         </div>
-        <div className="mt-4">{children}</div>
+        <div className="overflow-y-auto p-6 pt-4">{children}</div>
       </div>
     </div>
   );
