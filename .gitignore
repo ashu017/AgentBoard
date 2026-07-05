@@ -30,3 +30,6 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 .gstack/
+
+# Reddit marketer agent — generated drafts (post by hand; never committed)
+drafts/
