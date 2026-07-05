@@ -812,20 +812,25 @@ NOT AgentBoard product agents — though the dogfooding dream is to eventually r
   boundary, advisor scans.
 - **Social / launch agent** — drafts posts for Reddit (subreddits), Hacker News, Product
   Hunt, LinkedIn. **Draft-only**; actual posting needs API creds + per-post human approval
-  (outward-facing). **Revised 2026-07-05 (P0, Reddit slice):** building the Reddit slice as
-  `.claude/agents/reddit-marketer.md` + `scripts/reddit/*.mjs` (Approach B). It researches
-  curated subreddits (top-100/month via Reddit's OAuth2 script-app auth — password grant on
-  `www.reddit.com/api/v1/access_token`, authenticated calls on `oauth.reddit.com`), drafts
-  on-topic posts, and — past a **hard per-post human approval gate** (an explicit `--confirm`
-  flag on `submit-post.mjs`) — publishes live via `POST /api/submit`. The earlier
-  "draft-only" stance is superseded *only* for this approval-gated path; HN/PH/LinkedIn stay
-  draft-only. **Devvit evaluated & rejected 2026-07-05:** a Devvit Web app
+  (outward-facing). **Revised 2026-07-05 (P0, Reddit slice) — stays draft-only:** building
+  the Reddit slice as `.claude/agents/reddit-marketer.md` + a read-only `scripts/reddit/
+  fetch-top.mjs`. It researches curated subreddits (top-100/month via **public JSON**,
+  `www.reddit.com/r/<sub>/top.json`, descriptive User-Agent, no auth) and drafts tailored,
+  value-first posts; **a human reviews and posts them by hand.** *A mid-session draft of the
+  spec briefly proposed an OAuth2 script-app that auto-posts past a `--confirm` gate; that
+  was **removed** after reading Reddit's **Responsible Builder Policy** (2026-07-05):
+  automated posting of "identical or substantially similar content across subreddits" is
+  explicitly prohibited spam, app accounts must be single-purpose, and API app creation is
+  gated behind approval/registration (developers.reddit.com/app-registration) with
+  non-commercial builders steered to Devvit. So the automation-of-posting itself is the
+  liability — NEXT-3's original "draft-only" stance holds; only the human posts. This also
+  sidesteps the app-creation approval gate the user hit.* HN/PH/LinkedIn also stay
+  draft-only. **Devvit evaluated & set aside 2026-07-05:** a Devvit Web app
   (`~/Desktop/reddit/agentboard`) builds interactive posts that run on Reddit's servers and
-  can only post into subreddits that *installed the app* (a moderator action), so it
-  structurally cannot post promotional content into third-party communities — the whole
-  point. Devvit could later serve a separate "interactive AgentBoard presence on our own
-  subreddit" initiative; that is not this agent. Spec:
-  `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
+  can only post into subreddits that *installed the app* (a moderator action), so it can't
+  post promo into third-party communities. It remains the *sanctioned* path for a separate
+  future "interactive AgentBoard presence on our own subreddit" initiative — not this agent.
+  Spec: `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
 - **Design agent** (low priority) — Figma UI designs. Partly blocked: Figma MCP is on the
   Amazon account (IP concern) until a personal Figma is sorted.
 - **Docs / decision-log agent** — keeps DECISIONS/design/CLAUDE/HANDOFF consistent + release notes.

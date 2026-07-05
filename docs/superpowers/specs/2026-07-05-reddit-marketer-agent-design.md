@@ -1,122 +1,120 @@
 # Reddit Marketer Agent — Design (P0)
 
-**Date:** 2026-07-05
+**Date:** 2026-07-05 (revised same day after reading Reddit's Responsible Builder Policy)
 **Status:** Approved, pre-implementation
-**Supersedes:** DECISIONS.md NEXT-3 "Social / launch agent" (was draft-only) — this adds an
-approval-gated live-posting path for the Reddit slice.
+**Relation to DECISIONS.md NEXT-3 "Social / launch agent":** stays **draft-only**, as
+NEXT-3 originally scoped. An earlier draft of this spec added an approval-gated live-posting
+path; that was **removed** — see "Why not automated posting" below.
 
 ## Purpose
 
-Grow AgentBoard by researching relevant subreddits, learning what performs there, drafting
-on-topic posts about AgentBoard, and — after explicit per-post human approval — publishing
-them to Reddit. The first user of this capability is AgentBoard's own launch/marketing.
+Grow AgentBoard by researching relevant subreddits, learning what performs there, and
+drafting tailored, value-first posts about AgentBoard **for a human to review and post by
+hand**. The agent never posts to Reddit itself.
+
+## Why not automated posting (the constraint that shapes this)
+
+Reddit's **Responsible Builder Policy** (read 2026-07-05,
+support.reddithelp.com/hc/en-us/articles/42728983564564) prohibits exactly the pattern an
+auto-poster would use:
+
+- *"Apps must not engage in spamming activity through automated posts… **This includes
+  posting identical or substantially similar content across subreddits.**"*
+- *"App accounts should solely be used to perform app functions (no mixed use accounts)."*
+- *"Approval is required: You must request access and get explicit approval before accessing
+  any Reddit data through our API"* — app creation is gated behind
+  developers.reddit.com/app-registration, and non-commercial builders are steered to Devvit.
+
+An automated cross-subreddit promo poster is therefore offside regardless of a human
+approval gate — the *automation of posting* is the liability. So P0 is **read + draft only**:
+the agent produces distinct, community-specific drafts; **the human posts manually**, as a
+normal Redditor, respecting each community's rules and the 9:1 self-promo norm. This also
+unblocks us immediately — no app registration, no OAuth, no approval wait.
 
 ## Form factor
 
 A Claude Code **subagent** at `.claude/agents/reddit-marketer.md` (sibling of
 `seo-optimizer`, `spike-runner`, `test-runner`) — a build/launch-time helper, **not** an
-AgentBoard runtime product agent. Approach B ("agent + thin helper scripts"): the agent
-holds the judgment (curated subreddit list, community rules, drafting, the approval gate);
-small Node scripts do the dumb, testable I/O to Reddit's API.
-
-### Why not Devvit
-
-A Devvit Web app was evaluated (`~/Desktop/reddit/agentboard`) and rejected: Devvit builds
-interactive posts that run on Reddit's servers and can only post into subreddits that
-*installed the app* (a moderator action). It structurally cannot post promotional content
-into third-party communities (r/SideProject, r/SaaS, r/mcp, …) — which is the whole point.
-The OAuth2 script-app path posts as our own account to any subreddit our account can post to.
+AgentBoard runtime product agent. The agent holds the judgment (curated subreddit list,
+community rules, drafting); one small Node script does the read-only fetch.
 
 ## File layout
 
 ```
 .claude/agents/
-  reddit-marketer.md        # the agent: seed list, per-sub rules, judgment, workflow
+  reddit-marketer.md        # the agent: seed list, per-sub rules, judgment, drafting workflow
 
 scripts/reddit/
-  lib.mjs                   # env loading, OAuth token fetch+cache, fetch wrapper w/ User-Agent, normalization
-  fetch-top.mjs             # GET /r/<sub>/top?t=month&limit=100 → normalized JSON to stdout
-  submit-post.mjs           # POST /api/submit (link|self) → prints permalink; refuses without --confirm
+  fetch-top.mjs             # GET https://www.reddit.com/r/<sub>/top.json?t=month&limit=100
+                            #   (public JSON, descriptive User-Agent, no auth) → normalized JSON
   analyze.mjs (optional)    # summarize top-100 → themes / title patterns / format mix
 
-drafts/reddit/              # gitignored; drafts land here for review
-  <sub>-<slug>.md           # frontmatter (subreddit, kind, title, flair) + body
-
-.env.local                  # REDDIT_CLIENT_ID / SECRET / USERNAME / PASSWORD / USER_AGENT
+drafts/reddit/              # gitignored; drafts land here for the human to post by hand
+  <sub>-<slug>.md           # frontmatter (subreddit, kind, title, flair) + body + "why this fits"
 ```
 
-Plain Node `.mjs`, no new dependencies (Node 18+ global `fetch`).
+Plain Node `.mjs`, no new dependencies (Node 18+ global `fetch`). **No OAuth, no
+credentials, no posting script.**
 
-## Authentication — OAuth2 script app
+## Reading — public JSON (no auth)
 
-Grounded in Reddit's docs (github.com/reddit-archive/reddit/wiki/OAuth2 +
-OAuth2-Quick-Start-Example). Isolated in `lib.mjs`:
+`fetch-top.mjs <sub>`:
+- `GET https://www.reddit.com/r/<sub>/top.json?t=month&limit=100`
+- Header: a descriptive `User-Agent` (e.g. `agentboard-research/0.1 by u/<name>`) — Reddit
+  rejects generic UAs and rate-limits harder without one.
+- Low volume (a handful of reads per run), well within unauthenticated limits; respect
+  `429` / back off if it ever occurs.
+- Normalize each post to `{title, score, num_comments, flair, is_self, url, permalink}`;
+  print JSON to stdout.
 
-1. Register a **script** app at reddit.com/prefs/apps → `client_id` + `secret` (script apps
-   are confidential clients and DO have a secret).
-2. **Token fetch:** `POST https://www.reddit.com/api/v1/access_token`
-   - HTTP Basic auth: user = `client_id`, password = `client_secret`.
-   - Body (`application/x-www-form-urlencoded`): `grant_type=password&username=<u>&password=<p>`.
-   - `User-Agent` header, Reddit's format: `<appname>/<version> by <username>`
-     (e.g. `agentboard-marketer/0.1 by u/<name>`). Reddit rejects generic/blank UAs.
-   - Response: `{ access_token, expires_in: 3600, token_type: "bearer", scope }`.
-3. **Authenticated calls:** base URL `https://oauth.reddit.com` (NOT www). Header
-   `Authorization: bearer <token>`, plus the same `User-Agent`. Used for BOTH reading
-   (`/r/<sub>/top`) and posting (`/api/submit`).
-4. **Scopes:** `read` (top listings), `submit` (posting), `identity` (verify account via
-   `/api/v1/me`). Script apps typically return `scope: *`.
-5. **Token cache:** cache per process (optionally to a gitignored `.reddit-token.json`) with
-   the `expires_in` (1h) so multiple script calls in one run don't re-auth.
-
-Creds come from `.env.local` only — never committed, never printed. `.env.example` documents
-the five `REDDIT_*` keys. Missing creds → clear "set these env vars" exit, not a stack trace.
+> Note: public JSON is fine for light research reads. If Reddit ever tightens this, the
+> fallback is manual export — not an OAuth app (which reintroduces the approval gate).
 
 ## Workflow (the loop the agent runs)
 
 1. **Select subreddits** — from the embedded curated seed list (e.g. r/alphaandbetausers,
    r/SideProject, r/SaaS, r/artificial, r/mcp), each entry carrying its self-promo rules and
    preferred post kind (link vs text).
-2. **Research** — `fetch-top.mjs <sub>` → top 100 of the month, normalized to
-   `{title, score, num_comments, flair, is_self, url, permalink}`.
+2. **Research** — `fetch-top.mjs <sub>` → top 100 of the month, normalized.
 3. **Analyze** — extract what performs: recurring themes, title shapes, self-vs-link ratio,
-   comment-driving hooks. Grounds each draft in that community's proven patterns.
-4. **Draft** — write one on-topic AgentBoard post per sub to `drafts/reddit/<sub>-<slug>.md`
-   (frontmatter: `subreddit`, `kind`, `title`, `flair`; body below). Each draft notes which
-   top-post pattern it models and which self-promo rule it satisfies.
-5. **Approval gate (hard stop)** — present each draft and WAIT. No `submit-post.mjs` runs
-   without explicit approval of that specific draft.
-6. **Post** — on approval, `submit-post.mjs --sub <s> --kind <k> --title … --confirm` →
-   prints the live permalink. Agent reports back.
+   comment-driving hooks.
+4. **Draft (value-first, distinct per sub)** — write one post per sub to
+   `drafts/reddit/<sub>-<slug>.md`. Drafts are **genuinely useful to that community first**,
+   lightly referencing AgentBoard only where the sub's rules allow. Each draft is **tailored
+   and distinct** — never boilerplate reused across subs (that would be the prohibited
+   pattern if it were ever posted in bulk). Frontmatter: `subreddit`, `kind`, `title`,
+   `flair`; body below; plus a "why this fits + which rule it respects" note.
+5. **Hand off to the human** — the agent presents the drafts and **stops**. The human edits
+   as they see fit and **posts manually** through the normal Reddit UI, as themselves.
 
 ## Error handling
 
-Scripts fail loud and clear; never silent:
-- Missing/invalid creds → exit 1 naming the missing `REDDIT_*` var.
-- 401 → token expired/bad creds; re-auth once, then surface.
-- 429 → respect `x-ratelimit-reset` / back off, tell the user. (Reddit's OAuth limit is
-  ~60 req/min; the `x-ratelimit-{used,remaining,reset}` headers are on API responses.)
-- Submit errors (`SUBREDDIT_NOTALLOWED`, `NO_TEXT`, rule violations) → print Reddit's own
-  error JSON so the agent can fix the draft.
+`fetch-top.mjs` fails loud and clear:
+- Non-200 (e.g. sub private/banned/typo) → print status + Reddit's body, exit non-zero.
+- `429` → note the rate limit, back off, tell the user; never hammer.
+- Network error → clear message, exit non-zero.
 
-## Safety (outward-facing — real posts to real communities)
+## Safety & compliance
 
-- `submit-post.mjs` refuses to post without an explicit `--confirm`; the agent passes it only
-  after per-draft human approval.
-- Never print tokens/passwords to stdout or logs.
-- `drafts/` and `.reddit-token.json` gitignored.
-- Agent respects each sub's self-promo rules; subs that ban self-promo get no draft.
+- **No posting path exists in the code** — the agent cannot post even if asked; posting is a
+  human action. This is the core compliance guarantee.
+- Drafts are distinct per community and value-first (respects the 9:1 self-promo norm and the
+  "no substantially similar content across subreddits" rule *by construction*).
+- Agent respects each sub's self-promo rules from the seed list; subs that ban self-promo get
+  a value-only draft or none.
+- `drafts/` gitignored. No secrets involved.
 
 ## Testing
 
-- Unit-test `lib.mjs` normalization + the "missing creds" and "no --confirm" guard paths
-  (Vitest, mocked fetch). No live calls in CI.
-- Reading (`fetch-top`) may be smoke-tested live (top listings are low-risk).
-- Posting is **never** auto-tested against live Reddit; verified once manually on a
-  throwaway/test post.
+- Unit-test `fetch-top.mjs` normalization + error paths (Vitest, mocked fetch). No live calls
+  in CI.
+- Reading may be smoke-tested live (public JSON, low-risk) during development.
 
 ## Out of scope for P0
 
-- Wiring into AgentBoard's MCP agent plane (product feature — separate effort).
+- Any automated posting to Reddit (prohibited by policy; human posts by hand).
+- OAuth script app / credentials (not needed for read-only public JSON).
+- Wiring into AgentBoard's MCP agent plane (separate effort).
 - Dynamic subreddit discovery (curated seed list only in P0).
-- Comment replies, cross-posting, scheduling, analytics on posted performance.
-- A Devvit interactive AgentBoard presence on our own subreddit (separate initiative).
+- A Devvit interactive AgentBoard presence on our own subreddit (separate, sanctioned
+  initiative Reddit actually steers builders toward — worth its own brainstorm later).
