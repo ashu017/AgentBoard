@@ -309,6 +309,49 @@ export async function moveTask(taskId: string, to: string): Promise<void> {
   if (evErr) throw new Error(`move event failed: ${evErr.message}`);
 }
 
+export type ReviewVerdict = "approve_continue" | "approve_close" | "reject";
+
+/**
+ * Resolve an in_review task from the manager UI (approval loop AL-D).
+ * approve_continue → in_progress (agent resumes), approve_close → done (human
+ * sign-off / PR merged, AL4b), reject → failed. Runs under the user's RLS session
+ * via the resolve_review RPC (atomic status + verdict + event), so the RPC only
+ * matches a task in the caller's workspace.
+ */
+export async function resolveReview(
+  taskId: string,
+  verdict: ReviewVerdict,
+  selectedOptionId?: string,
+  note?: string
+): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!taskId) throw new Error("A task id is required");
+
+  const to =
+    verdict === "approve_continue" ? "in_progress" :
+    verdict === "approve_close" ? "done" : "failed";
+  const dbVerdict = verdict === "reject" ? "rejected" : "approved";
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase.rpc("resolve_review", {
+    p_workspace_id: session.workspace.id,
+    p_task_id: taskId,
+    p_to: to,
+    p_verdict: dbVerdict,
+    p_selected: selectedOptionId || null,
+    p_note: note?.trim() || null,
+    p_actor_id: session.user.id,
+  });
+  if (error) throw new Error(`resolve review failed: ${error.message}`);
+  const res = data as { ok: boolean; reason?: string };
+  if (!res.ok) {
+    throw new Error(
+      res.reason === "not_in_review" ? "Task is not awaiting review" : "Review not found in your workspace"
+    );
+  }
+}
+
 export interface CreatedProject {
   id: string;
   title: string;

@@ -23,6 +23,12 @@ export interface BoardTask {
   description: string | null;
   status: TaskStatus;
   result: string | null;
+  /** Approval-loop fields (AL-E): populated while/after a task is in_review. */
+  review_reason: string | null;
+  review_options: { id: string; label: string; detail?: string }[] | null;
+  review_verdict: "approved" | "rejected" | null;
+  review_selected_option: string | null;
+  review_note: string | null;
   /** Null for an unassigned project (P2); always set for a task. */
   assigned_agent_id: string | null;
   parent_id: string | null;
@@ -101,7 +107,7 @@ export async function listProjects(): Promise<ProjectOption[]> {
   return rows.sort((a, b) => (a.title === "Miscellaneous" ? -1 : b.title === "Miscellaneous" ? 1 : 0));
 }
 
-const BOARD_COLS = "id, title, description, status, result, assigned_agent_id, parent_id, kind, updated_at";
+const BOARD_COLS = "id, title, description, status, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
 
 /**
  * Board read for the SWIMLANE view (DECISIONS LANES-1): lanes are projects, and

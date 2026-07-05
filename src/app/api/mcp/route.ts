@@ -9,6 +9,7 @@ import {
   submitResult,
   createSubtask,
   listAgents,
+  requestReview,
   type AgentContext,
 } from "@/lib/agent-db";
 import { AgentError } from "@/lib/agent-errors";
@@ -16,13 +17,14 @@ import { STATUSES } from "@/lib/task-status";
 
 // ───────────────────────────────────────────────────────────────────────────
 // AgentBoard v1 MCP server — the agent plane (design.md "MCP server"; DECISIONS
-// 1A/D12/3A). Five tools, authenticated per-call by a per-agent bearer key:
+// 1A/D12/3A). Six tools, authenticated per-call by a per-agent bearer key:
 //
 //   list_my_tasks(status?, parent_task_id?)  — the agent's own tasks / subtree
 //   update_task_status(task_id, status, note?)
 //   submit_result(task_id, output, status?)
 //   create_subtask(parent_task_id, title, description?, assignee_agent_id?)  — decompose a project
 //   list_agents()  — active workspace agents, for delegating a subtask
+//   request_review(task_id, reason, options?)  — park a task for a human decision (approval loop)
 //
 // Auth: withMcpAuth verifies the bearer, resolves (agentId, workspaceId) via the
 // confined service-role module, and carries it in authInfo.extra. Every tool
@@ -47,7 +49,7 @@ Keep your assigned tasks up to date as you work — your manager is watching the
 - If you've been assigned a PROJECT, break it into tasks with create_subtask (call list_agents first if you want to delegate a subtask to another agent; otherwise it's assigned to you). Then work each task. You can read your whole project's progress with list_my_tasks(parent_task_id=<project id>), including tasks you delegated.
 - Tasks that don't depend on each other can be worked in PARALLEL — move each to in_progress when you actually start it and update each one independently, so the board reflects everything in flight at once. How you parallelize (internal subagents, worktrees, separate threads) is up to your runtime; AgentBoard only needs each task's status kept current.
 - When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work).
-- If you need a human to review before continuing, set status to in_review.
+- If you need a human decision before continuing, call request_review with a clear reason (and options if there are choices to pick between). Keep polling list_my_tasks: when the task leaves in_review you'll see the verdict (approved & continue → resume with the chosen option/note; approved & closed → the human marked it done; rejected → stop). Once you've raised a review you cannot mark the task done yourself — a human closes it.
 Update promptly and honestly — a stale or wrong status misleads the person relying on this board.`;
 
 /** Pull the resolved AgentContext out of the MCP auth info. */
@@ -168,6 +170,30 @@ const baseHandler = createMcpHandler(
           const ctx = ctxFrom(extra);
           await touchLastSeen(ctx);
           const task = await submitResult(ctx, task_id, output, status);
+          return ok({ task });
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
+      "request_review",
+      "Pause a task for a human decision. Moves your in_progress task to in_review with a required reason (why you need the human) and optional options for them to choose between. Poll list_my_tasks for the verdict; you cannot mark a reviewed task done yourself — a human closes it.",
+      {
+        task_id: z.string().min(1).describe("The task id (must be assigned to you and in_progress)"),
+        reason: z.string().min(1).max(2000).describe("Why you need a human decision"),
+        options: z
+          .array(z.object({ id: z.string(), label: z.string().max(200), detail: z.string().optional() }))
+          .max(10)
+          .optional()
+          .describe("Optional choices for the human to pick between"),
+      },
+      async ({ task_id, reason, options }, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const task = await requestReview(ctx, task_id, reason, options ?? null);
           return ok({ task });
         } catch (err) {
           return toolError(err);

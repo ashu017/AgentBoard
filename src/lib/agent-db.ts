@@ -6,7 +6,7 @@ import {
   type TaskStatus,
   isStatus,
   isTerminal,
-  canTransition,
+  agentCanTransition,
 } from "@/lib/task-status";
 import {
   AgentError,
@@ -53,6 +53,11 @@ export interface TaskRow {
   description: string | null;
   status: TaskStatus;
   result: string | null;
+  review_reason: string | null;
+  review_options: unknown | null;
+  review_verdict: "approved" | "rejected" | null;
+  review_selected_option: string | null;
+  review_note: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -284,6 +289,53 @@ export async function submitResult(
   });
 }
 
+/** Max review reason length (mirrors the note cap). */
+const MAX_REVIEW_REASON = 2000;
+
+export interface ReviewOption { id: string; label: string; detail?: string }
+
+/**
+ * request_review(task_id, reason, options?) — park an in_progress task in in_review
+ * with a structured request (AL-C). reason required ≤2000; options optional, ≤10,
+ * each label ≤200. Not in_progress → 409; foreign/absent task → 404; bad input → 400.
+ * The verdict is delivered poll-based: the agent keeps calling list_my_tasks and
+ * sees review_verdict/review_note once a human resolves it. The agent cannot move
+ * the task out of in_review itself (AL4b) — see agentCanTransition.
+ */
+export async function requestReview(
+  ctx: AgentContext,
+  taskId: string,
+  reason: string,
+  options?: ReviewOption[] | null
+): Promise<TaskRow> {
+  if (!taskId) throw badInput("task_id required");
+  if (typeof reason !== "string" || !reason.trim()) throw badInput("reason required");
+  if (reason.length > MAX_REVIEW_REASON) throw badInput("reason too long (max 2000)");
+  if (options != null) {
+    if (!Array.isArray(options) || options.length > 10) throw badInput("options must be an array of ≤10");
+    for (const o of options) {
+      if (!o || typeof o.id !== "string" || typeof o.label !== "string" || o.label.length > 200) {
+        throw badInput("each option needs id + label (label ≤200)");
+      }
+    }
+  }
+
+  const { data, error } = await db().rpc("request_review", {
+    p_workspace_id: ctx.workspaceId,
+    p_agent_id: ctx.agentId,
+    p_task_id: taskId,
+    p_reason: reason.trim(),
+    p_options: options ?? null,
+  });
+  if (error) throw badInput(error.message);
+  const res = data as
+    | { ok: true; task: TaskRow }
+    | { ok: false; reason: "not_found" | "not_in_progress" };
+  if (res.ok) return res.task;
+  if (res.reason === "not_found") throw notFound();
+  throw illegalTransition("request_review is only valid on an in_progress task");
+}
+
 export interface WorkspaceAgent {
   id: string;
   name: string;
@@ -325,7 +377,9 @@ async function applyTransition(
   opts: ApplyOpts
 ): Promise<TaskRow> {
   const from = task.status;
-  if (!opts.sameStatus && !canTransition(from, to)) {
+  // Agent-plane legality (AL4b): stricter than canTransition — the agent can
+  // never drive a task OUT of in_review (a review it raised is human-resolved).
+  if (!opts.sameStatus && !agentCanTransition(from, to)) {
     throw illegalTransition(`Cannot move ${from} → ${to}`);
   }
 
