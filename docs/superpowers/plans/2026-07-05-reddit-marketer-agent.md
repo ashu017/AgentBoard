@@ -559,6 +559,15 @@ git commit -m "feat(reddit): fetch-top CLI wrapper (reads .env.local, JSON to st
 
 **Files:** none (verification only)
 
+> **⚠️ DEFERRED to the user's own machine (2026-07-05).** The dev environment this was
+> built in has its egress IP blocked by Reddit — `fetch-top.mjs` correctly returns a loud
+> 403 for *every* request (all subs, both hosts, even reddit.com's homepage), regardless of
+> User-Agent. This is a network/IP block, NOT a code defect: the code + error handling are
+> verified via the 14 mocked-fetch unit tests, and the CLI's error path was observed live
+> (403 → clear message → exit 1). Run the three steps below on a residential IP (your Mac) —
+> which is also where the `launchd` tick runs in production, so the real use case is
+> unaffected. Reddit may return a `Blocked`/403 to datacenter IPs specifically.
+
 - [ ] **Step 1: Pull a real subreddit's top posts**
 
 Run: `node scripts/reddit/fetch-top.mjs SideProject | head -40`
