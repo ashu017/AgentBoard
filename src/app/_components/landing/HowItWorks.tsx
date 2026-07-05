@@ -30,7 +30,9 @@ function StepCard({ step, index }: { step: (typeof steps)[number]; index: number
         clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%)",
       }}
     >
-      <div className="display mb-3 text-3xl uppercase" style={{ color: `${step.color}33`, letterSpacing: "0.06em" }}>
+      {/* Step number: bolder than a faint ghost so the sequence reads at a glance,
+          but still lighter than the heading (it's an ordinal, not the message). */}
+      <div className="display mb-3 text-4xl uppercase" style={{ color: step.color, opacity: 0.85, letterSpacing: "0.06em" }}>
         {step.num}
       </div>
       <h3 className="display mb-2 text-sm uppercase tracking-widest text-ink">{step.title}</h3>

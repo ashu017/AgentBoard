@@ -134,7 +134,7 @@ export default function LandingPage() {
                     +
                   </span>
                 </summary>
-                <p className="mono mt-2 text-xs leading-relaxed text-ink-soft">{item.a}</p>
+                <p className="mono mt-2 text-sm leading-relaxed text-ink-soft">{item.a}</p>
               </details>
             ))}
           </div>

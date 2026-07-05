@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { Search, Code2, Eye, Compass, TestTube2, Check } from "lucide-react";
 
 // The three animated in-card demos for the Features section. Content is
@@ -17,10 +17,12 @@ const roles = [
 
 export function AgentRosterFeature() {
   const [active, setActive] = useState(0);
+  const reduce = useReducedMotion();
   useEffect(() => {
+    if (reduce) return; // static: keep the first role highlighted, no cycling
     const t = setInterval(() => setActive((p) => (p + 1) % roles.length), 1100);
     return () => clearInterval(t);
-  }, []);
+  }, [reduce]);
   return (
     <div className="mt-4 flex flex-col gap-1.5">
       {roles.map((r, i) => {
@@ -68,11 +70,16 @@ export function AgentRosterFeature() {
 type ApprovalState = "idle" | "asking" | "approved";
 
 export function ApprovalFeature() {
-  const [state, setState] = useState<ApprovalState>("idle");
+  const reduce = useReducedMotion();
+  // Reduced-motion: pin to the "asking" frame (the most representative
+  // human-in-the-loop state) via the lazy initial value; no looping effect.
+  const [state, setState] = useState<ApprovalState>(reduce ? "asking" : "idle");
   useEffect(() => {
+    if (reduce) return;
     let cancelled = false;
     const seq = async () => {
       if (cancelled) return;
+      setState("idle");
       await new Promise((r) => setTimeout(r, 800));
       if (cancelled) return;
       setState("asking");
@@ -89,7 +96,7 @@ export function ApprovalFeature() {
       cancelled = true;
       clearInterval(t);
     };
-  }, []);
+  }, [reduce]);
 
   return (
     <div className="mt-4">
@@ -200,15 +207,22 @@ const feedItems = [
 ];
 
 export function LiveFeedFeature() {
-  const [visible, setVisible] = useState(2);
+  const reduce = useReducedMotion();
+  // Reduced-motion: show the full feed at once (static, via lazy initial);
+  // otherwise start with 2 and roll items in.
+  const [visible, setVisible] = useState(reduce ? feedItems.length : 2);
   useEffect(() => {
+    if (reduce) return;
     const t = setInterval(() => setVisible((p) => (p < feedItems.length ? p + 1 : 1)), 1500);
     return () => clearInterval(t);
-  }, []);
+  }, [reduce]);
+  // Guard against useReducedMotion resolving true only after mount: render the
+  // whole feed for reduced-motion regardless of the (frozen) visible count.
+  const shown = reduce ? feedItems.length : visible;
   return (
     <div className="mt-4 flex flex-col gap-1.5">
       <AnimatePresence mode="popLayout">
-        {feedItems.slice(0, visible).map((item) => (
+        {feedItems.slice(0, shown).map((item) => (
           <motion.div
             key={item.msg}
             layout
