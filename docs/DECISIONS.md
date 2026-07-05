@@ -439,10 +439,12 @@ resolution. `done`/`failed` terminal (exit → `409`). The enum + transition map
 shared `lib/task-status.ts` imported by the DB `CHECK`, MCP validators, UI, and tests.
 **`in_review` added 2026-06-29 (Level A — status only):** an agent can park a task
 awaiting human approval; it's visible on the board. This is the approval-gate primitive
-from POSITION (a moat piece). The resolution loop (human Approve/Reject + an MCP tool for
-the agent to read the verdict and resume) is **Level B**, deferred as the next deliberate
-feature — it's the first human write-action on the board, so it gets real design, not a
-mid-spike bolt-on. Migration `0002_add_in_review.sql` widens the live CHECK constraint.
+from POSITION (a moat piece). **Level B — the approval loop — is now BUILT (2026-07-05,
+see APPROVAL LOOP AL1–AL8 below):** the human resolves via approve-continue / approve-close
+/ reject carrying a reason+verdict, the agent raises reviews with `request_review` and reads
+the verdict poll-based via `list_my_tasks`, and the agent is blocked from moving a task out
+of `in_review` itself (AL4b — the human closes it). Migration `0002_add_in_review.sql` widens
+the live CHECK constraint.
 **Why:** Cut from a larger set to the minimum the loop needs. Single source prevents the
 classic drift where the API allows a move the UI can't render (DRY).
 
@@ -455,7 +457,13 @@ classic drift where the API allows a move the UI can't render (DRY).
 payload size and board render.
 
 ### D-INREVIEW-INTERIM — `in_review` can be resolved from the board (interim, pre-approval-loop)
-**Status:** Active · 2026-07-04 · **Interim — to be formalized by the approval loop (feat/approval-loop, AL4b)**
+**Status:** Superseded 2026-07-05 by APPROVAL LOOP (AL1–AL8 below) · originally 2026-07-04 (interim)
+**Superseded note:** the fuller model shipped. The `in_review → {done, in_progress, failed}`
+transitions this entry opened remain in the SSOT (they are the human-plane moves), but the
+human now resolves through the structured verdict path (`resolveReview` → `resolve_review` RPC,
+carrying reason/verdict/note/selected-option), and the AGENT plane is blocked from any move out
+of `in_review` via `agentCanTransition` (AL4b). The board's raw drag-to-resolve still works for
+the human via `moveTask`. Original interim reasoning preserved below.
 `in_review` now has legal outgoing transitions in the SSOT: `in_review → {done, in_progress,
 failed}`. This unblocks the board's In Review column — a reviewed card can be dragged to Done
 (approved/merged), back to In Progress (needs changes), or Failed. Previously `in_review` was a
@@ -466,6 +474,47 @@ minimal human-plane unblock. The approval loop (spec 2026-07-01-approval-loop-de
 supersede this with the fuller model: a human verdict (approve-continue / approve-close /
 reject) carrying a reason, and the agent plane blocked from self-closing a review (AL4b). Until
 then, any legal transition out of `in_review` is allowed to whoever can drive the board.
+
+### APPROVAL LOOP (Level B) — AL1–AL8 + AL4b
+**Status:** Active · Built 2026-07-05 · Spec: `docs/superpowers/specs/2026-07-01-approval-loop-design.md`
+The human-in-the-loop approval loop, the moat piece deferred at D-STATUS. An agent parks a task
+for a human decision; the manager resolves it from the board; the agent resumes by polling. This
+supersedes D-INREVIEW-INTERIM with the structured model. Satisfies board task #6 (an agent that
+raised a review can't self-mark `done`; only a human closes it) via AL4b.
+
+- **AL1 — Unified in-review surface, split by shape.** A review with no options resolves *inline*
+  on the card (three verdict buttons); a review carrying options opens a modal with a radio list +
+  optional note. One concept, two renderings — no separate "approvals inbox" in v1.
+- **AL2 — `request_review(task_id, reason, options?)` is a distinct MCP tool**, not an overload of
+  `update_task_status`. Parking for review is semantically different from a status move and carries
+  structured payload (reason + optional options). It's the 6th agent tool.
+- **AL3 — Verdict delivery is poll-based** via the existing `list_my_tasks`: the `review_*` fields
+  ride on the returned task rows, so the agent reads the verdict (approved/rejected, selected option,
+  note) on its next poll. No new "get verdict" tool, no push channel to the agent in v1.
+- **AL4 — Two-plane split.** Agent plane: `request_review` (atomic RPC, service-role, scoped to
+  (workspace, agent)). Human plane: `resolveReview` (approve_continue → in_progress, approve_close →
+  done, reject → failed) via the `resolve_review` RPC under the user's RLS session.
+- **AL4b — The agent can NEVER move a task out of `in_review`.** Enforced by `agentCanTransition`
+  in the SSOT (returns false for any `in_review → *`), used by the agent-plane `applyTransition`.
+  Only the human `resolveReview` resolves a review. This is board task #6.
+- **AL5 — `request_review` is only valid on an `in_progress` task** (→ 409 otherwise; foreign/absent
+  → 404; bad input → 400), mirroring `submit_result`. One open review per task at a time (a task is
+  either in_review or it isn't).
+- **AL6 — Atomic write + event.** Both `request_review` and `resolve_review` do the task-write and
+  the `task_events` append (via the single `append_task_event` helper) in one txn, matching the
+  `agent_apply_transition` / `create_subtask` pattern. A review-request logs `in_progress→in_review`
+  by the agent; a resolution logs `in_review→<to>` by the user.
+- **AL7 — Input caps.** reason ≤ 2000 chars (mirrors the note cap); options optional, ≤ 10, each
+  label ≤ 200 chars. Validated in `agent-db.requestReview` and mirrored in the MCP tool's Zod schema.
+- **AL8 — Columns on `tasks`, not a side table.** `review_reason`, `review_options` (jsonb),
+  `review_verdict` (CHECK approved/rejected), `review_selected_option`, `review_note` (migration
+  `0011_approval_loop.sql`). A task carries at most one live review, so columns beat a 1:1 table.
+**Grant note:** `resolve_review` is granted to `authenticated` (the manager UI calls it under RLS,
+SECURITY INVOKER so the inner UPDATE stays workspace-scoped); `request_review` is revoked from
+anon/authenticated (agent plane, service-role only). Both pin `search_path`.
+**Why:** The approval loop is the differentiator (POSITION) and the first real human write-action,
+so it got deliberate design: a distinct tool, poll-based verdicts (no new transport), and a
+DB-independent agent-side lock (AL4b) so an agent can't rubber-stamp its own work.
 
 ### D-PARALLEL — Agents work independent tasks in parallel; guidance is mechanism-agnostic
 **Status:** Active · 2026-07-04
@@ -826,16 +875,16 @@ dev-agent-invokes-skills vs separate agents, and whether these later become prod
 
 Multi-user workspaces / invites / roles · DB-enforced agent RLS (Appendix A) · pull/claim
 task pool · extra MCP tools (`get_task`, `add_comment`, `heartbeat`) · statuses
-`blocked`/`backlog` · **Level B approval loop** (human Approve/Reject on `in_review` + an
-MCP verdict-read tool so the agent resumes — the moat-defining human-in-the-loop gate; next
-deliberate feature after S0) · priorities/labels/due dates/comments · short-lived/
+`blocked`/`backlog` · priorities/labels/due dates/comments · short-lived/
 rotating agent tokens · published agent SDK · true mobile reflow · optimistic UI ·
 light+dark theming · rendered visual mockups (needs an OpenAI key; recommended first UI
 step) · per-key rate limiting (first follow-up; `last_seen_at` throttle blunts the
 runaway-agent write pressure for now).
 
 (`in_review` itself is no longer deferred — pulled into scope 2026-06-29 at Level A;
-see D-STATUS.)
+see D-STATUS. The **Level B approval loop** — human approve-continue/close/reject + agent
+`request_review` + poll-based verdict — is also no longer deferred: BUILT 2026-07-05, see
+APPROVAL LOOP AL1–AL8 above.)
 
 ## Open / unvalidated risks
 
