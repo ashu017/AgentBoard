@@ -851,6 +851,24 @@ tests green. **Open:** real OG image (TODO in metadata); `SITE_ORIGIN` falls bac
 `https://agentboard.dev` when `NEXT_PUBLIC_APP_ORIGIN` unset — confirm the public domain;
 copy worth a seo-optimizer audit pass before launch.
 
+### D-WAITLIST — Pre-launch demand capture on the landing page
+**Status:** ✅ **BUILT 2026-07-05.** Directly targets the **Demand** open risk below — the
+landing page's only CTA was "Sign in with GitHub", a commitment step, not an interest
+signal. Added an email capture ("Join the waitlist") in the hero, under the OAuth CTA, for
+visitors not ready to authenticate.
+**Data:** new `public.waitlist_signups` (email UNIQUE + shape CHECK, `source`, `created_at`);
+migration `0013_waitlist.sql`. RLS is the **inverse** of tasks — `anon`+`authenticated` can
+INSERT, and there is deliberately **no SELECT policy**, so the public/anon key can write but
+never read the list back; the owner reads counts via the Supabase dashboard / service-role.
+Not added to the `supabase_realtime` publication (no live needs).
+**Capture path:** client-side insert from `WaitlistForm.tsx` via the browser Supabase client,
+so the landing page stays `force-static` (no server action → no dynamic boundary). A unique
+violation (23505) is surfaced as success ("already on the list"), not an error. A hidden
+honeypot field (`company_website`) drops bot submissions in app code — cheap spam guard, no
+captcha friction. No admin UI in v1 (YAGNI — read the count in the dashboard).
+**Why not a server action + service-role:** would force a dynamic boundary on the static
+marketing page for no security gain; insert-only RLS already makes a client-side write safe.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed
@@ -916,6 +934,9 @@ APPROVAL LOOP AL1–AL8 above.)
   the owner's agent.
 - **Demand:** "managers want to hand-assign tasks to agents on a board" is the core bet,
   still unproven. Worth a rough demo in front of a few agent-runners before heavy build.
+  **Partially mitigated 2026-07-05:** a waitlist email capture now lives on the landing hero
+  (D-WAITLIST) so pre-launch interest is measurable (signup count = demand signal) rather
+  than assumed. Still needs real traffic + a demo to validate.
 - **Moat durability (see POSITION):** the agent-native/MCP wedge is a head start, not yet
   defensible — an incumbent could ship an MCP server and copy it. The bet is that
   agent-shaped primitives + the control loop + OSS/self-host positioning compound into a

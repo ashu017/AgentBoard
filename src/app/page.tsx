@@ -13,6 +13,7 @@ import { HowItWorks } from "@/app/_components/HowItWorks";
 import { AboutSection } from "@/app/_components/AboutSection";
 import { GlassNav, GlassNavAnchor, GlassNavLink } from "@/app/_components/GlassNav";
 import { AuthCta } from "@/app/_components/AuthCta";
+import { WaitlistForm } from "@/app/_components/WaitlistForm";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -155,6 +156,18 @@ export default function LandingPage() {
             >
               How it works ↓
             </a>
+          </div>
+
+          {/* Pre-launch demand capture (DECISIONS D-WAITLIST). Not ready to sign
+              in with GitHub? Leave an email — a lower-commitment interest signal
+              than the OAuth CTA above, so we can gauge demand before launch. */}
+          <div className="mt-8 max-w-md border-t border-line pt-6">
+            <p className="text-sm text-ink-soft">
+              Not ready to sign in? Get notified when AgentBoard opens up.
+            </p>
+            <div className="mt-3">
+              <WaitlistForm source="hero" />
+            </div>
           </div>
 
           {/* Animated operator-console hero: a contained, decorative pixel-Pong
