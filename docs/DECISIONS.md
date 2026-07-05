@@ -535,6 +535,20 @@ that *does* name worktrees lives in `CLAUDE.md` ("Working in parallel"), scoped 
 runtime — restores the "internal subagents" spirit that the first-class-projects rewrite
 dropped from the instructions.
 
+### D-PROJECT-DECOMPOSE — Assigned a project → create tasks first, every time
+**Status:** Active · 2026-07-05
+Both behavioral nudge points (`SERVER_INSTRUCTIONS` in route.ts + the onboarding wizard's
+"tell your agent" sample) now state that when an agent is assigned a PROJECT (a top-level
+`kind='project'` task), its **first** step is to `create_subtask` the project into concrete
+tasks — before starting any work — so the manager sees the plan on the board. Previously the
+guidance was softer ("if you've been assigned a project, break it into tasks"); this makes
+task-creation the required opening move for any assigned project.
+**Why:** the north-star loop is the manager watching planned work move on the board. An agent
+that silently works a project without decomposing it leaves the board empty until it finishes
+— defeating the live-visibility point. Mechanism-agnostic like D-PARALLEL: it's guidance to
+any MCP client, not enforced in code (agents *can* still work without decomposing; the
+instruction steers them). Enforcement would need a product rule; deferred.
+
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
 **Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
 The board only receives an agent's live update if the agent-written (service-role) row
