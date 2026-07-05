@@ -33,3 +33,6 @@ tsconfig.tsbuildinfo
 
 # Reddit marketer agent — generated drafts (post by hand; never committed)
 drafts/
+
+# Git worktrees (isolated workspaces)
+.claude/worktrees/
