@@ -1003,7 +1003,7 @@ export function advance({ file = DEFAULT_FILE, week = isoWeek() } = {}) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run tests/reddit/watermark.test.ts`
-Expected: PASS (6 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1192,7 +1192,7 @@ Expected: `[tick] … week's pass complete; idling.` and NO Telegram message sen
 - [ ] **Step 1: Run the whole unit suite**
 
 Run: `npm test`
-Expected: all tests pass, including `tests/reddit/seeds.test.ts` (3), `tests/reddit/lib.test.ts` (14), `tests/reddit/send-telegram.test.ts` (5), and `tests/reddit/watermark.test.ts` (6). No live Reddit or Telegram calls occur in the suite.
+Expected: all tests pass, including `tests/reddit/seeds.test.ts` (3), `tests/reddit/lib.test.ts` (14), `tests/reddit/send-telegram.test.ts` (5), and `tests/reddit/watermark.test.ts` (5). No live Reddit or Telegram calls occur in the suite.
 
 - [ ] **Step 2: Confirm no secrets or drafts are tracked**
 
