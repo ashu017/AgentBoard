@@ -12,6 +12,7 @@ import { AgentBoardPixelHero } from "@/components/ui/animated-hero-section";
 import { HowItWorks } from "@/app/_components/HowItWorks";
 import { AboutSection } from "@/app/_components/AboutSection";
 import { GlassNav, GlassNavAnchor, GlassNavLink } from "@/app/_components/GlassNav";
+import { AuthCta } from "@/app/_components/AuthCta";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -124,13 +125,9 @@ export default function LandingPage() {
               <GlassNavLink href="/board" label="Go to board" />
             </GlassNav>
           </div>
-          {/* Primary action stays a solid orange CTA, anchored to the right. */}
-          <Link
-            href="/login"
-            className="justify-self-end rounded-full bg-orange px-4 py-1.5 text-sm font-medium text-paper shadow-sm transition-colors hover:bg-orange/90"
-          >
-            Sign in
-          </Link>
+          {/* Primary action stays a solid orange CTA, anchored to the right.
+              Session-aware (client-side): swaps to "Go to board" when signed in. */}
+          <AuthCta variant="header" />
         </div>
       </header>
 
@@ -151,12 +148,7 @@ export default function LandingPage() {
           <p className="mt-3 max-w-2xl text-base text-ink-soft">{TAGLINE}</p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              href="/login"
-              className="bg-orange px-5 py-2.5 text-sm font-medium text-paper"
-            >
-              Sign in with GitHub
-            </Link>
+            <AuthCta variant="hero" />
             <a
               href="#how-it-works"
               className="mono border border-line px-5 py-2.5 text-sm text-ink-soft hover:text-ink"
