@@ -21,16 +21,18 @@
 - Modify: `.gitignore` — ignore `drafts/`.
 - Modify: `.env.example` — document optional `REDDIT_USER_AGENT` + `REDDIT_BEARER_TOKEN` + Telegram vars.
 
-Weekly-automation files (Tasks 9–12):
+Automation files (Tasks 8–12) — a 5-min tick that drafts ONE sub per run and advances a watermark:
 - Create: `scripts/reddit/send-telegram.mjs` — POST one message to the Telegram Bot API.
 - Create: `scripts/reddit/telegram-chat-id.mjs` — one-off helper to print your chat id.
-- Create: `scripts/reddit/weekly-run.sh` — orchestrator: per seed sub → `claude -p` draft → send-telegram.
-- Create: `ops/launchd/com.agentboard.reddit-weekly.plist` — launchd schedule template.
+- Create: `scripts/reddit/watermark.mjs` — read/advance the `{week,index}` watermark; pick the next sub; ISO-week reset + idle-when-done.
+- Create: `scripts/reddit/tick.sh` — per-tick orchestrator: next sub → `claude -p` draft → send-telegram → advance watermark.
+- Create: `ops/launchd/com.agentboard.reddit-tick.plist` — launchd 5-min `StartInterval` template.
 - Create: `tests/reddit/send-telegram.test.ts` — unit tests for the Telegram sender (mocked fetch).
+- Create: `tests/reddit/watermark.test.ts` — unit tests for watermark advance / weekly reset / idle-when-done.
 
-Analysis of the top-100 (themes, title shapes) is done by the agent itself (it's an LLM) — no `analyze.mjs` script (YAGNI). The weekly run reuses the `reddit-marketer` agent via `claude -p` rather than duplicating the drafting prompt.
+Analysis of the top-100 (themes, title shapes) is done by the agent itself (it's an LLM) — no `analyze.mjs` script (YAGNI). The tick reuses the `reddit-marketer` agent via `claude -p` rather than duplicating the drafting prompt.
 
-The **seed subreddit list is the single source of truth** and lives in one place — `scripts/reddit/seeds.mjs` (Task 1b) — imported by both the agent's guidance and `weekly-run.sh`, so the weekly job and the interactive agent target the same subs.
+The **seed subreddit list is the single source of truth** and lives in one place — `scripts/reddit/seeds.mjs` (Task 1b) — imported by both the agent's guidance and the tick job, so automation and the interactive agent target the same subs. The tick drips **one sub per 5-min tick** and idles after a full weekly pass (watermark scoped to the ISO week), so the net effect is one pass over the seed list per week.
 
 ---
 
@@ -677,7 +679,7 @@ git commit -m "feat(reddit): reddit-marketer research+draft subagent (read-only,
 
 ---
 
-## Task 9: `send-telegram.mjs` — Telegram sender (one message per call)
+## Task 8: `send-telegram.mjs` — Telegram sender (one message per call)
 
 **Files:**
 - Create: `scripts/reddit/send-telegram.mjs`
@@ -803,7 +805,7 @@ git commit -m "feat(reddit): send-telegram — one Bot API message per call"
 
 ---
 
-## Task 10: `telegram-chat-id.mjs` — one-off chat-id helper
+## Task 9: `telegram-chat-id.mjs` — one-off chat-id helper
 
 **Files:**
 - Create: `scripts/reddit/telegram-chat-id.mjs`
@@ -867,113 +869,249 @@ git commit -m "feat(reddit): telegram-chat-id helper (fetch chat id from getUpda
 
 ---
 
-## Task 11: `weekly-run.sh` — the cron orchestrator
+## Task 10: `watermark.mjs` — the per-tick position tracker
 
 **Files:**
-- Create: `scripts/reddit/weekly-run.sh`
+- Create: `scripts/reddit/watermark.mjs`
+- Test: `tests/reddit/watermark.test.ts`
+
+The watermark decides which sub a tick handles. It stores `{week, index}` in a JSON file.
+`nextSub` returns the sub for the current tick (or `null` when the week's pass is done);
+`advance` bumps the index after a successful send; a stale `week` resets the pass to index 0.
+`isoWeek` is injected (not computed from the clock) so tests are deterministic.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/reddit/watermark.test.ts`:
+
+```ts
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { readFileSync, writeFileSync, rmSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { nextSub, advance } from "../../scripts/reddit/watermark.mjs";
+
+const SUBS = ["a", "b", "c"];
+let dir, file;
+beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "wm-")); file = join(dir, ".watermark.json"); });
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+describe("nextSub", () => {
+  it("returns the first sub and initializes the file when none exists", () => {
+    const r = nextSub({ file, subs: SUBS, week: "2026-W27" });
+    expect(r).toEqual({ sub: "a", index: 0 });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ week: "2026-W27", index: 0 });
+  });
+
+  it("returns the sub at the current index mid-week", () => {
+    writeFileSync(file, JSON.stringify({ week: "2026-W27", index: 1 }));
+    expect(nextSub({ file, subs: SUBS, week: "2026-W27" })).toEqual({ sub: "b", index: 1 });
+  });
+
+  it("returns null when the week's pass is complete (idle)", () => {
+    writeFileSync(file, JSON.stringify({ week: "2026-W27", index: 3 }));
+    expect(nextSub({ file, subs: SUBS, week: "2026-W27" })).toBeNull();
+  });
+
+  it("resets to the first sub when a new ISO week starts", () => {
+    writeFileSync(file, JSON.stringify({ week: "2026-W27", index: 3 }));
+    const r = nextSub({ file, subs: SUBS, week: "2026-W28" });
+    expect(r).toEqual({ sub: "a", index: 0 });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ week: "2026-W28", index: 0 });
+  });
+});
+
+describe("advance", () => {
+  it("increments the stored index for the given week", () => {
+    writeFileSync(file, JSON.stringify({ week: "2026-W27", index: 1 }));
+    advance({ file, week: "2026-W27" });
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ week: "2026-W27", index: 2 });
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `npx vitest run tests/reddit/watermark.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `scripts/reddit/watermark.mjs`:
+
+```js
+// Tracks which subreddit the next 5-min tick should handle. State is a small
+// JSON file: { week: "<ISO-year-week>", index: <next seed index> }. The pass is
+// scoped to an ISO week — a new week resets to index 0; when index reaches the
+// seed count the week's pass is done and nextSub returns null (idle). isoWeek is
+// injected so tests are deterministic. Read + file I/O only; no network.
+import { readFileSync, writeFileSync } from "node:fs";
+
+const DEFAULT_FILE = "drafts/reddit/.watermark.json";
+
+function read(file) {
+  try { return JSON.parse(readFileSync(file, "utf8")); }
+  catch { return null; }
+}
+
+function write(file, state) {
+  writeFileSync(file, JSON.stringify(state));
+}
+
+/** Compute the current ISO week string, e.g. "2026-W27". */
+export function isoWeek(date = new Date()) {
+  // Copy to UTC midnight Thursday of this week (ISO-8601 week rule).
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/**
+ * The sub this tick should handle, plus its index — or null if the current
+ * week's pass is already complete. Initializes / weekly-resets the file as a
+ * side effect so the caller always sees a consistent state.
+ */
+export function nextSub({ file = DEFAULT_FILE, subs, week = isoWeek() } = {}) {
+  let state = read(file);
+  if (!state || state.week !== week) {
+    state = { week, index: 0 };
+    write(file, state);
+  }
+  if (state.index >= subs.length) return null; // pass done — idle until next week
+  return { sub: subs[state.index], index: state.index };
+}
+
+/** Bump the index after a successful draft+send for the current sub. */
+export function advance({ file = DEFAULT_FILE, week = isoWeek() } = {}) {
+  const state = read(file) || { week, index: 0 };
+  write(file, { week: state.week, index: (state.index || 0) + 1 });
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `npx vitest run tests/reddit/watermark.test.ts`
+Expected: PASS (6 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/reddit/watermark.mjs tests/reddit/watermark.test.ts
+git commit -m "feat(reddit): watermark — one sub per tick, ISO-week reset, idle when done"
+```
+
+---
+
+## Task 11: `tick.sh` — the 5-minute per-tick orchestrator
+
+**Files:**
+- Create: `scripts/reddit/tick.sh`
 
 - [ ] **Step 1: Write the orchestrator**
 
-Create `scripts/reddit/weekly-run.sh`:
+Create `scripts/reddit/tick.sh`:
 
 ```bash
 #!/usr/bin/env bash
-# Weekly draft run: for each seed subreddit, ask the reddit-marketer agent
-# (via Claude Code headless) to research + draft one post, then send that draft
-# to Telegram as its own message. Reads Reddit + writes Telegram only — never
-# posts to Reddit. The human uploads by hand.
+# One tick (runs every 5 min via launchd): handle EXACTLY ONE subreddit — the one
+# the watermark points at — then advance the watermark. Once the week's pass is
+# done, ticks are no-ops until a new ISO week. Reads Reddit + writes Telegram
+# only; never posts to Reddit. The human uploads by hand.
 #
-# Invoked by launchd (ops/launchd/com.agentboard.reddit-weekly.plist).
+# Invoked by launchd (ops/launchd/com.agentboard.reddit-tick.plist).
 set -euo pipefail
 
 # Resolve repo root (this script lives in scripts/reddit/).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
-LOG="${ROOT}/drafts/reddit/weekly-$(date +%Y%m%d).log"
+LOG="${ROOT}/drafts/reddit/tick-$(date +%Y%m%d).log"
 mkdir -p "${ROOT}/drafts/reddit"
 
-# Read the seed sub names from the single source of truth.
-SUBS=$(node -e "import('./scripts/reddit/seeds.mjs').then(m => console.log(m.seedNames().join('\n')))")
+# Ask the watermark for this tick's sub (JSON: {"sub":"...","index":N} or "null").
+PICK=$(node -e "import('./scripts/reddit/seeds.mjs').then(async (s) => { const { nextSub } = await import('./scripts/reddit/watermark.mjs'); const r = nextSub({ subs: s.seedNames() }); process.stdout.write(JSON.stringify(r)); })")
 
-echo "[weekly-run] $(date) targeting: $(echo "$SUBS" | tr '\n' ' ')" | tee -a "$LOG"
+if [ "$PICK" = "null" ]; then
+  echo "[tick] $(date) — week's pass complete; idling." | tee -a "$LOG"
+  exit 0
+fi
 
-for SUB in $SUBS; do
-  echo "[weekly-run] drafting for r/${SUB}…" | tee -a "$LOG"
+SUB=$(printf '%s' "$PICK" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).sub))")
+echo "[tick] $(date) — drafting for r/${SUB}…" | tee -a "$LOG"
 
-  # Headless Claude Code: reuse the reddit-marketer agent to produce ONE draft.
-  # -p runs a single non-interactive prompt; the agent writes to drafts/reddit/.
-  PROMPT="Use the reddit-marketer agent. Research r/${SUB} (run fetch-top.mjs ${SUB}), then write ONE value-first draft post to drafts/reddit/${SUB}-weekly.md following the agent's draft format. Do not post to Reddit. After writing, print ONLY the final draft file's contents to stdout."
+# Headless Claude Code: reuse the reddit-marketer agent to produce ONE draft.
+PROMPT="Use the reddit-marketer agent. Research r/${SUB} (run fetch-top.mjs ${SUB}), then write ONE value-first draft post to drafts/reddit/${SUB}-weekly.md following the agent's draft format. Do not post to Reddit. After writing, print ONLY the final draft file's contents to stdout."
 
-  if DRAFT=$(claude -p "$PROMPT" 2>>"$LOG"); then
-    # Send this sub's draft as its own Telegram message, then pause so messages
-    # arrive individually. A failure here must not abort the other subs.
-    if node scripts/reddit/send-telegram.mjs "r/${SUB} — weekly draft:
+if DRAFT=$(claude -p "$PROMPT" 2>>"$LOG"); then
+  if node scripts/reddit/send-telegram.mjs "r/${SUB} — weekly draft:
 
 ${DRAFT}" >>"$LOG" 2>&1; then
-      echo "[weekly-run] ✓ sent r/${SUB}" | tee -a "$LOG"
-    else
-      echo "[weekly-run] ✗ telegram send failed for r/${SUB} (see log)" | tee -a "$LOG"
-    fi
+    # Advance ONLY after a successful draft+send, so a failed tick retries this sub.
+    node -e "import('./scripts/reddit/watermark.mjs').then(m => m.advance())"
+    echo "[tick] ✓ sent r/${SUB} and advanced watermark" | tee -a "$LOG"
   else
-    echo "[weekly-run] ✗ draft failed for r/${SUB} (see log)" | tee -a "$LOG"
+    echo "[tick] ✗ telegram send failed for r/${SUB} — watermark NOT advanced (retry next tick)" | tee -a "$LOG"
+    exit 1
   fi
-
-  sleep 5
-done
-
-echo "[weekly-run] done $(date)" | tee -a "$LOG"
+else
+  echo "[tick] ✗ draft failed for r/${SUB} — watermark NOT advanced (retry next tick)" | tee -a "$LOG"
+  exit 1
+fi
 ```
 
-- [ ] **Step 2: Make it executable + shellcheck-clean**
+- [ ] **Step 2: Make it executable + syntax-check**
 
 Run:
 ```bash
-chmod +x scripts/reddit/weekly-run.sh
-bash -n scripts/reddit/weekly-run.sh && echo "syntax ok"
+chmod +x scripts/reddit/tick.sh
+bash -n scripts/reddit/tick.sh && echo "syntax ok"
 ```
-Expected: `syntax ok` (no syntax errors). `bash -n` only parses; it does not run the loop.
+Expected: `syntax ok`. `bash -n` only parses; it does not run the tick.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/reddit/weekly-run.sh
-git commit -m "feat(reddit): weekly-run.sh orchestrator (claude -p draft → telegram per sub)"
+git add scripts/reddit/tick.sh
+git commit -m "feat(reddit): tick.sh — one sub per 5-min tick, advance watermark on success"
 ```
 
 ---
 
-## Task 12: `launchd` schedule + setup docs
+## Task 12: `launchd` 5-min schedule + setup docs
 
 **Files:**
-- Create: `ops/launchd/com.agentboard.reddit-weekly.plist`
+- Create: `ops/launchd/com.agentboard.reddit-tick.plist`
 
 - [ ] **Step 1: Write the launchd plist template**
 
-Create `ops/launchd/com.agentboard.reddit-weekly.plist`:
+Create `ops/launchd/com.agentboard.reddit-tick.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Weekly Reddit draft → Telegram job. Runs Mon 09:00 local.
+  Reddit draft → Telegram tick. Runs every 5 minutes; handles ONE subreddit per
+  tick (watermark-driven) and idles once the week's pass is done.
   SETUP:
     1. Replace __REPO__ with the absolute path to this repo, and __NODE_BIN_DIR__
        with the dir containing your `node` + `claude` (run: dirname "$(which node)").
-    2. Copy to ~/Library/LaunchAgents/com.agentboard.reddit-weekly.plist
-    3. Load it:   launchctl load ~/Library/LaunchAgents/com.agentboard.reddit-weekly.plist
-       Unload:    launchctl unload ~/Library/LaunchAgents/com.agentboard.reddit-weekly.plist
-       Run now:   launchctl start com.agentboard.reddit-weekly
-  launchd (not cron) runs a missed job on the next wake if the Mac was asleep at 09:00.
+    2. Copy to ~/Library/LaunchAgents/com.agentboard.reddit-tick.plist
+    3. Load it:   launchctl load ~/Library/LaunchAgents/com.agentboard.reddit-tick.plist
+       Unload:    launchctl unload ~/Library/LaunchAgents/com.agentboard.reddit-tick.plist
+       Run now:   launchctl start com.agentboard.reddit-tick
+  launchd (not cron) runs a missed tick on the next wake if the Mac was asleep.
 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.agentboard.reddit-weekly</string>
+  <string>com.agentboard.reddit-tick</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>__REPO__/scripts/reddit/weekly-run.sh</string>
+    <string>__REPO__/scripts/reddit/tick.sh</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -982,12 +1120,8 @@ Create `ops/launchd/com.agentboard.reddit-weekly.plist`:
   </dict>
   <key>WorkingDirectory</key>
   <string>__REPO__</string>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Weekday</key><integer>1</integer>
-    <key>Hour</key><integer>9</integer>
-    <key>Minute</key><integer>0</integer>
-  </dict>
+  <key>StartInterval</key>
+  <integer>300</integer>
   <key>StandardOutPath</key>
   <string>__REPO__/drafts/reddit/launchd.out.log</string>
   <key>StandardErrorPath</key>
@@ -998,14 +1132,14 @@ Create `ops/launchd/com.agentboard.reddit-weekly.plist`:
 
 - [ ] **Step 2: Verify the plist is well-formed XML**
 
-Run: `plutil -lint ops/launchd/com.agentboard.reddit-weekly.plist`
-Expected: `ops/launchd/com.agentboard.reddit-weekly.plist: OK`
+Run: `plutil -lint ops/launchd/com.agentboard.reddit-tick.plist`
+Expected: `ops/launchd/com.agentboard.reddit-tick.plist: OK`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ops/launchd/com.agentboard.reddit-weekly.plist
-git commit -m "feat(reddit): launchd weekly schedule template + setup notes"
+git add ops/launchd/com.agentboard.reddit-tick.plist
+git commit -m "feat(reddit): launchd 5-min tick schedule template + setup notes"
 ```
 
 ---
@@ -1022,13 +1156,23 @@ Expected: prints `chat_id=…`. Put that value in `.env.local` as `TELEGRAM_CHAT
 
 - [ ] **Step 2: Send a test Telegram message**
 
-Run: `node scripts/reddit/send-telegram.mjs "AgentBoard weekly test ✅"`
+Run: `node scripts/reddit/send-telegram.mjs "AgentBoard tick test ✅"`
 Expected: `✓ sent to Telegram` and the message arrives in your Telegram.
 
-- [ ] **Step 3: Dry-run the weekly job once**
+- [ ] **Step 3: Dry-run two ticks and watch the watermark advance**
 
-Run: `bash scripts/reddit/weekly-run.sh`
-Expected: one Telegram message per seed subreddit (arriving individually), drafts written under `drafts/reddit/`, and a `weekly-*.log` with `✓ sent` lines. If `claude` isn't on PATH, install/point to it and retry.
+Run: `bash scripts/reddit/tick.sh && cat drafts/reddit/.watermark.json && echo && bash scripts/reddit/tick.sh && cat drafts/reddit/.watermark.json`
+Expected: the first tick drafts sub #0 and sends ONE Telegram message; `.watermark.json` shows `index: 1`. The second tick drafts sub #1 and sends one message; `index: 2`. If `claude` isn't on PATH, install/point to it and retry.
+
+- [ ] **Step 4: Confirm idle after a full pass**
+
+Fast-forward the watermark past the last sub (uses the real current ISO week), then tick:
+```bash
+WEEK=$(node -e "import('./scripts/reddit/watermark.mjs').then(m=>console.log(m.isoWeek()))")
+printf '{"week":"%s","index":99}' "$WEEK" > drafts/reddit/.watermark.json
+bash scripts/reddit/tick.sh
+```
+Expected: `[tick] … week's pass complete; idling.` and NO Telegram message sent. Re-arm by deleting the file: `rm drafts/reddit/.watermark.json` (or wait for the next ISO week).
 
 ---
 
@@ -1039,15 +1183,15 @@ Expected: one Telegram message per seed subreddit (arriving individually), draft
 - [ ] **Step 1: Run the whole unit suite**
 
 Run: `npm test`
-Expected: all tests pass, including `tests/reddit/seeds.test.ts` (3), `tests/reddit/lib.test.ts` (14), and `tests/reddit/send-telegram.test.ts` (6). No live Reddit or Telegram calls occur in the suite.
+Expected: all tests pass, including `tests/reddit/seeds.test.ts` (3), `tests/reddit/lib.test.ts` (14), `tests/reddit/send-telegram.test.ts` (6), and `tests/reddit/watermark.test.ts` (6). No live Reddit or Telegram calls occur in the suite.
 
 - [ ] **Step 2: Confirm no secrets or drafts are tracked**
 
 Run: `git status --short && git check-ignore drafts/x.md`
-Expected: clean tree (all work committed); `git check-ignore` prints `drafts/x.md` (confirming the dir is ignored).
+Expected: clean tree (all work committed); `git check-ignore` prints `drafts/x.md` (confirming the dir is ignored — this also covers `.watermark.json`).
 
 - [ ] **Step 3: Confirm the branch is ready for PR**
 
 Run: `git log --oneline main..HEAD`
-Expected: the sequence of commits from Tasks 1–12. The feature is complete: research reads work, the agent exists, the weekly job drafts + delivers to Telegram, and nothing posts to Reddit.
+Expected: the sequence of commits from Tasks 1–14. The feature is complete: research reads work, the agent exists, the 5-min tick drafts one sub per tick + delivers to Telegram + advances a weekly watermark, and nothing posts to Reddit.
 ```

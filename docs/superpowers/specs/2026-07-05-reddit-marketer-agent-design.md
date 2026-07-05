@@ -109,22 +109,39 @@ credentials, no posting script.**
   a value-only draft or none.
 - `drafts/` gitignored. No secrets involved.
 
-## Weekly automation (P0.5 — local cron → Telegram)
+## Automation (P0.5 — local 5-min tick → one subreddit → Telegram)
 
-A scheduled weekly run that drafts posts and delivers them to Telegram for the human to
-upload by hand. **Still draft-only**: the cron never posts to Reddit.
+A scheduled job ticks **every 5 minutes** and processes **exactly one subreddit per tick**,
+advancing a persisted **watermark** so each tick picks up the next sub. It drips one draft
+to Telegram at a time for the human to upload by hand. **Still draft-only**: the job never
+posts to Reddit.
 
-- **Host:** the user's Mac via **`launchd`** (preferred over plain `cron` — it can run a
-  missed job on next wake; a Mac asleep at the scheduled time otherwise skips the run).
-  A `com.agentboard.reddit-weekly.plist` template + install instructions live in the repo.
-  Default schedule: **Monday 09:00 local**.
-- **Draft engine:** the cron shell script invokes **Claude Code headless** (`claude -p`)
-  pointed at the `reddit-marketer` subagent, so the weekly run reuses the exact same
-  research + drafting logic (single source of truth — no duplicated prompt).
-- **Targets:** iterate the **full curated seed list**, one draft per subreddit.
-- **Delivery:** **one Telegram message per subreddit, sent sequentially** (not a combined
-  digest), via Telegram Bot API `sendMessage`, with a short delay between sends so they
-  arrive as distinct, individually-actionable messages.
+### Drip + watermark semantics
+
+- **One sub per tick.** Each 5-min run reads the watermark, drafts for the **next** seed
+  subreddit, delivers it to Telegram, then advances the watermark. No batch/burst — gentle on
+  Reddit and one draft to review at a time.
+- **Watermark file:** `drafts/reddit/.watermark.json` (gitignored) — stores
+  `{ week: "<ISO-year-week>", index: <next seed index> }`.
+- **Weekly reset, then idle.** The watermark is scoped to the current ISO week. Once the tick
+  has processed the last sub in the list (`index` reaches the seed count), subsequent ticks in
+  the same week are **no-ops** (nothing to do). When a new ISO week begins, the next tick sees
+  a stale `week`, resets `index` to 0, and starts a fresh pass at sub #1. **Net effect: one
+  full pass over the seed list per week, drip-fed 5 minutes apart** — matching the original
+  "one post per sub per week" intent without a burst.
+- **Idempotency within a tick:** advance the watermark only *after* a successful draft+send
+  for that sub, so a mid-tick failure re-tries the same sub next tick rather than skipping it.
+
+### Pieces
+
+- **Schedule:** the user's Mac via **`launchd`**, `StartInterval` = 300s (every 5 min).
+  launchd (not plain `cron`) also runs a missed tick on next wake. A
+  `com.agentboard.reddit-tick.plist` template + install instructions live in the repo.
+- **Draft engine:** the tick shell script invokes **Claude Code headless** (`claude -p`)
+  pointed at the `reddit-marketer` subagent for the one target sub, so it reuses the exact
+  same research + drafting logic (no duplicated prompt).
+- **Delivery:** **one Telegram message** (that sub's draft) via Telegram Bot API
+  `sendMessage`.
 
 ### Components
 
@@ -132,36 +149,39 @@ upload by hand. **Still draft-only**: the cron never posts to Reddit.
 scripts/reddit/
   send-telegram.mjs         # POST sendMessage to Telegram Bot API; one message per call
   telegram-chat-id.mjs      # one-off helper: print your chat_id from getUpdates
-  weekly-run.sh             # orchestrator: for each seed sub → claude -p draft → send-telegram
+  watermark.mjs             # read/advance the {week,index} watermark; pick the next sub (pure + file I/O)
+  tick.sh                   # per-tick orchestrator: next sub → claude -p draft → send-telegram → advance
 
 ops/launchd/
-  com.agentboard.reddit-weekly.plist   # launchd schedule template + install notes
+  com.agentboard.reddit-tick.plist   # launchd 5-min StartInterval template + install notes
 ```
 
-### Config (`.env.local`, all optional unless you run the weekly job)
+### Config (`.env.local`, all optional unless you run the tick job)
 
 - `TELEGRAM_BOT_TOKEN` — from @BotFather.
 - `TELEGRAM_CHAT_ID` — your chat id (use `telegram-chat-id.mjs` to fetch it once).
 
 ### Safety (same guarantee extends here)
 
-- The weekly job **only reads Reddit and writes to Telegram** — there is still no Reddit
+- The tick job **only reads Reddit and writes to Telegram** — there is still no Reddit
   posting code anywhere. The human uploads to Reddit manually.
 - Telegram secrets live in `.env.local` (gitignored); never printed or committed.
-- `send-telegram.mjs` fails loud on a non-200 from Telegram; a failed send for one sub does
-  not abort the others.
+- `send-telegram.mjs` fails loud on a non-200 from Telegram; on failure the watermark is not
+  advanced, so the same sub retries next tick.
 
 ## Testing
 
-- Unit-test `lib.mjs` normalization + error paths, and `send-telegram.mjs` payload building
-  + error handling (Vitest, mocked fetch). No live calls in CI.
+- Unit-test `lib.mjs` normalization + error paths, `send-telegram.mjs` payload building +
+  error handling, and `watermark.mjs` advance/weekly-reset/idle logic (Vitest, mocked fetch +
+  a temp file). No live calls in CI.
 - Reading and Telegram delivery may be smoke-tested live (low-risk) during development.
-- `weekly-run.sh` is verified manually (a single dry-run invocation), not in CI.
+- `tick.sh` is verified manually (a couple of dry-run invocations to watch the watermark
+  advance), not in CI.
 
 ## Out of scope for P0
 
-- Any automated posting to Reddit (prohibited by policy; human posts by hand). The weekly
-  cron automates *drafting + Telegram delivery* only — never Reddit posting.
+- Any automated posting to Reddit (prohibited by policy; human posts by hand). The tick job
+  automates *drafting + Telegram delivery* only — never Reddit posting.
 - OAuth script app / credentials (not needed for read-only public JSON).
 - Wiring into AgentBoard's MCP agent plane (separate effort).
 - Dynamic subreddit discovery (curated seed list only in P0).

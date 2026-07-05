@@ -830,14 +830,19 @@ NOT AgentBoard product agents — though the dogfooding dream is to eventually r
   can only post into subreddits that *installed the app* (a moderator action), so it can't
   post promo into third-party communities. It remains the *sanctioned* path for a separate
   future "interactive AgentBoard presence on our own subreddit" initiative — not this agent.
-  **Weekly automation added 2026-07-05 (P0.5), still draft-only:** a **local `launchd` job**
-  (Mon 09:00) runs the drafting via **Claude Code headless (`claude -p`)** against the
-  `reddit-marketer` subagent, then delivers **one Telegram message per seed subreddit**
-  (`send-telegram.mjs`, sequential) for the user to upload by hand. The cron only reads
-  Reddit + writes Telegram — no Reddit posting code exists. `launchd` (not plain `cron`)
-  chosen so a run missed while the Mac is asleep fires on next wake. Telegram creds
-  (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) live in gitignored `.env.local`.
-  Spec: `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
+  **Automation added 2026-07-05 (P0.5), still draft-only — revised to a drip:** a **local
+  `launchd` job ticks every 5 min** (`StartInterval` 300s) and processes **exactly one
+  subreddit per tick**, advancing a persisted **watermark** (`drafts/reddit/.watermark.json`,
+  `{week, index}`). Each tick drafts via **Claude Code headless (`claude -p`)** against the
+  `reddit-marketer` subagent and delivers **that one sub's** draft as a single Telegram
+  message (`send-telegram.mjs`). The watermark is ISO-week-scoped: after the last sub the job
+  **idles until a new week resets it to sub #1** → net **one full pass over the seed list per
+  week, drip-fed 5 min apart** (chosen over a single Mon-09:00 batch: gentler on Reddit, one
+  draft to review at a time). Watermark advances only after a successful draft+send, so a
+  failed tick retries the same sub. Still reads Reddit + writes Telegram only — no Reddit
+  posting code exists. Telegram creds (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) live in
+  gitignored `.env.local`. Spec:
+  `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
 - **Design agent** (low priority) — Figma UI designs. Partly blocked: Figma MCP is on the
   Amazon account (IP concern) until a personal Figma is sorted.
 - **Docs / decision-log agent** — keeps DECISIONS/design/CLAUDE/HANDOFF consistent + release notes.
