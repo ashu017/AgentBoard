@@ -59,9 +59,14 @@ credentials, no posting script.**
 ## Reading — public JSON (no auth)
 
 `fetch-top.mjs <sub>`:
-- `GET https://www.reddit.com/r/<sub>/top.json?t=month&limit=100`
-- Header: a descriptive `User-Agent` (e.g. `agentboard-research/0.1 by u/<name>`) — Reddit
-  rejects generic UAs and rate-limits harder without one.
+- **Default (no auth):** `GET https://www.reddit.com/r/<sub>/top.json?t=month&limit=100`.
+- **Optional bearer token:** if `REDDIT_BEARER_TOKEN` is set in the env, use
+  `GET https://oauth.reddit.com/r/<sub>/top?t=month&limit=100` with
+  `Authorization: bearer <token>` for higher/more reliable rate limits. Purely optional — a
+  per-session convenience (tokens expire ~1h); the script works fully without it. We do NOT
+  create an OAuth app or store long-lived credentials.
+- Header (both paths): a descriptive `User-Agent` (e.g. `agentboard-research/0.1 by u/<name>`)
+  — Reddit rejects generic UAs and rate-limits harder without one.
 - Low volume (a handful of reads per run), well within unauthenticated limits; respect
   `429` / back off if it ever occurs.
 - Normalize each post to `{title, score, num_comments, flair, is_self, url, permalink}`;
