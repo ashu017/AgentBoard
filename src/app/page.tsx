@@ -167,31 +167,29 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── FOOTER ─────────────────────────────────── */}
-      <footer
-        className="flex flex-col items-center justify-between gap-3 px-6 py-5 sm:flex-row lg:px-10"
-        style={{ borderTop: "1px solid rgba(200,80,0,0.12)" }}
-      >
-        <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <a href="#how-it-works" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
-            How it works
-          </a>
-          <a href="#features" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
-            Features
-          </a>
-          <a href="#faq" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
-            FAQ
-          </a>
-          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
-            GitHub
-          </a>
-          <Link href="/login" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
-            Sign in
-          </Link>
-        </nav>
-        <p className="mono text-[9px] uppercase tracking-widest" style={{ color: "rgba(28,24,20,0.35)" }}>
-          © 2026 AgentBoard // open source // MIT
-        </p>
+      {/* ── Footer (SEO internal links + Organization) — the calmer previous
+          footer: filled paper band, readable links, wordmark + MIT line. ───── */}
+      <footer className="border-t border-line bg-paper-2/70">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-8 sm:flex-row sm:items-center sm:justify-between lg:px-10">
+          <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-soft">
+            <a href="#how-it-works" className="hover:text-ink">
+              How it works
+            </a>
+            <a href="#features" className="hover:text-ink">
+              Features
+            </a>
+            <a href="#faq" className="hover:text-ink">
+              FAQ
+            </a>
+            <a href={GITHUB_URL} className="hover:text-ink" target="_blank" rel="noopener noreferrer">
+              GitHub
+            </a>
+            <Link href="/login" className="hover:text-ink">
+              Sign in
+            </Link>
+          </nav>
+          <p className="mono text-xs text-ink-soft">AgentBoard · open source · MIT</p>
+        </div>
       </footer>
     </div>
   );
