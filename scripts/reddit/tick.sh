@@ -28,7 +28,7 @@ echo "[tick] $(date) — drafting for r/${SUB}…" | tee -a "$LOG"
 # Headless Claude Code: reuse the reddit-marketer agent to produce ONE draft.
 PROMPT="Use the reddit-marketer agent. Research r/${SUB} (run fetch-top.mjs ${SUB}), then write ONE value-first draft post to drafts/reddit/${SUB}-weekly.md following the agent's draft format. Do not post to Reddit. After writing, print ONLY the final draft file's contents to stdout."
 
-if DRAFT=$(claude -p "$PROMPT" 2>>"$LOG"); then
+if DRAFT=$(claude -p "$PROMPT" 2>>"$LOG") && [ -n "$(printf '%s' "$DRAFT" | tr -d '[:space:]')" ]; then
   if node scripts/reddit/send-telegram.mjs "r/${SUB} — weekly draft:
 
 ${DRAFT}" >>"$LOG" 2>&1; then
