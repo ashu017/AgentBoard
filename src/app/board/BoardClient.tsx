@@ -3,7 +3,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { STATUSES, canTransition, type TaskStatus } from "@/lib/task-status";
 import { STATUS_UI, statusColor } from "@/lib/status-ui";
-import { createTaskAction, createProjectAction, updateTaskAction, updateProjectAction, deleteTaskAction, moveTaskAction, type ActionResult } from "@/app/actions";
+import { createTaskAction, createProjectAction, updateTaskAction, updateProjectAction, deleteTaskAction, moveTaskAction, resolveReviewAction, type ActionResult } from "@/app/actions";
 import type { BoardTask, AgentRow, BoardFilters, TimeWindow, StatusFilter, ProjectOption } from "@/lib/manager-queries";
 import type { CreatedProject } from "@/lib/manager-actions";
 import { Modal } from "@/app/_components/Modal";
@@ -80,6 +80,9 @@ export function BoardClient({
   // Drag-and-drop: the task being dragged (board-ux). Drives legal-target highlighting.
   const [dragging, setDragging] = useState<BoardTask | null>(null);
   const [moveError, setMoveError] = useState("");
+  // The in_review task whose OPTIONS modal is open (approval loop AL-E). Only
+  // option-reviews open the modal; a plain yes/no review resolves inline.
+  const [reviewTask, setReviewTask] = useState<BoardTask | null>(null);
 
   // Drop a dragged task into a status column: validate the transition, call the
   // move action, optimistically update local state so the card jumps immediately.
@@ -107,7 +110,7 @@ export function BoardClient({
     async function refetch() {
       const { data } = await supabase!
         .from("tasks")
-        .select("id, title, description, status, result, assigned_agent_id, parent_id, kind, updated_at")
+        .select("id, title, description, status, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at")
         .order("updated_at", { ascending: false })
         .limit(400);
       if (data) setTasks(data as BoardTask[]);
@@ -296,6 +299,19 @@ export function BoardClient({
         {confirmDelete && <DeleteConfirmPanel item={confirmDelete} onDone={() => setConfirmDelete(null)} />}
       </Modal>
 
+      {/* Review request — the human resolves an in_review task that carries options
+          (approval loop AL-E). Yes/no reviews resolve inline on the card. */}
+      <Modal
+        open={Boolean(reviewTask)}
+        onClose={() => setReviewTask(null)}
+        title="Review request"
+        systemTag="SYS:: REVIEW REQUEST"
+        blurBackdrop
+        size="lg"
+      >
+        {reviewTask && <ReviewModalPanel task={reviewTask} onDone={() => setReviewTask(null)} />}
+      </Modal>
+
       {capped && <p className="mono mt-3 text-[11px] text-ink-soft">Showing most recent 200 projects.</p>}
 
       {/* Swimlanes: one lane per project (LANES-1). New lanes/cards fade in via
@@ -318,6 +334,7 @@ export function BoardClient({
             onEditTask={setEditTask}
             onDeleteProject={() => setConfirmDelete(project)}
             onDeleteTask={setConfirmDelete}
+            onReview={setReviewTask}
             dragging={dragging}
             onDragStart={setDragging}
             onDragEnd={() => setDragging(null)}
@@ -388,6 +405,7 @@ function ProjectLane({
   onEditTask,
   onDeleteProject,
   onDeleteTask,
+  onReview,
   dragging,
   onDragStart,
   onDragEnd,
@@ -401,6 +419,7 @@ function ProjectLane({
   onEditTask: (task: BoardTask) => void;
   onDeleteProject: () => void;
   onDeleteTask: (task: BoardTask) => void;
+  onReview: (task: BoardTask) => void;
   dragging: BoardTask | null;
   onDragStart: (task: BoardTask) => void;
   onDragEnd: () => void;
@@ -502,7 +521,7 @@ function ProjectLane({
                   </p>
                 )}
                 {colTasks.map((t) => (
-                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} onEdit={() => onEditTask(t)} onDelete={() => onDeleteTask(t)} onDragStart={() => onDragStart(t)} onDragEnd={onDragEnd} />
+                  <TaskCard key={t.id} task={t} agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined} loud={meta.loud} onEdit={() => onEditTask(t)} onDelete={() => onDeleteTask(t)} onReview={onReview} onDragStart={() => onDragStart(t)} onDragEnd={onDragEnd} />
                 ))}
               </div>
             </div>
@@ -519,6 +538,7 @@ function TaskCard({
   loud,
   onEdit,
   onDelete,
+  onReview,
   onDragStart,
   onDragEnd,
 }: {
@@ -527,6 +547,7 @@ function TaskCard({
   loud?: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onReview: (task: BoardTask) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
@@ -569,12 +590,80 @@ function TaskCard({
         </button>
       </div>
 
+      {task.status === "in_review" && (
+        <div className="mt-1.5 border-l-2 border-orange pl-2">
+          <p className="text-[11px] italic text-ink">{task.review_reason}</p>
+          {task.review_options && task.review_options.length > 0 ? (
+            <button onClick={() => onReview(task)} className="mono mt-1 text-[10px] uppercase tracking-widest text-orange">
+              ⏸ Review {task.review_options.length} options →
+            </button>
+          ) : (
+            <ReviewActions taskId={task.id} />
+          )}
+        </div>
+      )}
+
       {terminal && task.result && (
         <div className={`mono mt-1.5 truncate text-[11px] ${loud ? "text-magenta" : "text-ink-soft"}`}>
           → {task.result}
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * Inline yes/no review resolution (approval loop AL-E) — rendered on the card for
+ * a review with no options. The three verdicts submit the same form with a
+ * different button `value`. For an option-review the ReviewModalPanel is used
+ * instead (it reuses these same submit buttons with the selected option id).
+ */
+function ReviewActions({ taskId, selectedOptionId }: { taskId: string; selectedOptionId?: string }) {
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(resolveReviewAction, null);
+  return (
+    <form action={formAction} className="mt-1 flex flex-wrap gap-1">
+      <input type="hidden" name="taskId" value={taskId} />
+      {selectedOptionId && <input type="hidden" name="selectedOptionId" value={selectedOptionId} />}
+      <button name="verdict" value="approve_continue" disabled={pending} className="mono border border-line px-2 py-0.5 text-[10px] uppercase hover:text-orange">Approve &amp; continue</button>
+      <button name="verdict" value="approve_close" disabled={pending} className="mono border border-line px-2 py-0.5 text-[10px] uppercase hover:text-orange">Approve &amp; close</button>
+      <button name="verdict" value="reject" disabled={pending} className="mono border border-line px-2 py-0.5 text-[10px] uppercase text-magenta">Reject</button>
+      {state && !state.ok && <span className="text-[10px] text-magenta">{state.error}</span>}
+    </form>
+  );
+}
+
+/**
+ * Option-review resolution modal (approval loop AL-E): the reason, a radio list
+ * of the agent's options, an optional note, and the three verdict actions. The
+ * chosen option id is carried on the same form the buttons submit.
+ */
+function ReviewModalPanel({ task, onDone }: { task: BoardTask; onDone: () => void }) {
+  const [selected, setSelected] = useState(task.review_options?.[0]?.id ?? "");
+  const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(resolveReviewAction, null);
+  useEffect(() => { if (state?.ok) onDone(); }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="taskId" value={task.id} />
+      <input type="hidden" name="selectedOptionId" value={selected} />
+      <p className="text-[13px] italic text-ink">{task.review_reason}</p>
+      <div className="mt-3 grid gap-2">
+        {task.review_options?.map((o) => (
+          <label key={o.id} className={`clip-corner cursor-pointer border p-2 text-sm ${selected === o.id ? "border-st-done bg-paper" : "border-line"}`}>
+            <input type="radio" name="opt" className="mr-2" checked={selected === o.id} onChange={() => setSelected(o.id)} />
+            <span className="font-medium">{o.label}</span>
+            {o.detail && <span className="mono ml-1 block text-[11px] text-ink-soft">{o.detail}</span>}
+          </label>
+        ))}
+      </div>
+      <textarea name="note" placeholder="Note (optional)" rows={2} className="mt-3 w-full border border-line bg-paper px-3 py-2 text-sm" />
+      {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button name="verdict" value="approve_continue" disabled={pending} className="bg-orange px-3 py-2 text-sm font-medium text-paper">Approve &amp; continue</button>
+        <button name="verdict" value="approve_close" disabled={pending} className="border border-line px-3 py-2 text-sm">Approve &amp; close</button>
+        <button name="verdict" value="reject" disabled={pending} className="border border-line px-3 py-2 text-sm text-magenta">Reject</button>
+        <button type="button" onClick={onDone} className="ml-auto border border-line px-3 py-2 text-sm">Cancel</button>
+      </div>
+    </form>
   );
 }
 

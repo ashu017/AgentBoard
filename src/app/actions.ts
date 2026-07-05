@@ -11,8 +11,10 @@ import {
   updateProject as _updateProject,
   deleteTask as _deleteTask,
   moveTask as _moveTask,
+  resolveReview as _resolveReview,
   type CreatedAgent,
   type CreatedProject,
+  type ReviewVerdict,
 } from "@/lib/manager-actions";
 
 // Server-action wrappers for the manager UI forms. Thin: validate-via-lib,
@@ -161,6 +163,28 @@ export async function deleteTaskAction(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to delete" };
+  }
+}
+
+/**
+ * Resolve an in_review task from the board (approval loop AL-E). Form-based:
+ * the verdict comes from the submit button's value; optional selectedOptionId +
+ * note carry the chosen option / manager note.
+ */
+export async function resolveReviewAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const taskId = String(formData.get("taskId") ?? "");
+    const verdict = String(formData.get("verdict") ?? "") as ReviewVerdict;
+    const selectedOptionId = String(formData.get("selectedOptionId") ?? "");
+    const note = String(formData.get("note") ?? "");
+    await _resolveReview(taskId, verdict, selectedOptionId || undefined, note || undefined);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to resolve review" };
   }
 }
 
