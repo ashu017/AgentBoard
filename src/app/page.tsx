@@ -7,12 +7,8 @@ import {
   HOW_IT_WORKS,
   FAQ,
 } from "@/lib/site";
-import { HowItWorks } from "@/app/_components/HowItWorks";
-import { AboutSection } from "@/app/_components/AboutSection";
-import { GlassNav, GlassNavAnchor, GlassNavLink } from "@/app/_components/GlassNav";
-import { AuthCta } from "@/app/_components/AuthCta";
+import { LandingView } from "@/app/_components/landing/LandingView";
 import { WaitlistForm } from "@/app/_components/WaitlistForm";
-import { HeroBoardPreview } from "@/app/_components/HeroBoardPreview";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -106,156 +102,96 @@ export default function LandingPage() {
       <JsonLd data={howToLd} />
       <JsonLd data={faqLd} />
 
-      {/* ── System bar / floating glass-pill nav ─────────────────────────── */}
-      <header className="sticky top-0 z-20">
-        {/* Three-zone header: wordmark hard-left, glass nav truly centered
-            (grid 1fr/auto/1fr so the center cell is centered relative to the
-            whole header, not just "between" the side widths), Sign in hard-right. */}
-        <div className="mx-auto grid max-w-7xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-6 py-3 sm:px-8 lg:px-12">
-          <span className="mono justify-self-start text-xs uppercase tracking-[0.2em] text-orange">
-            SYS:: AGENTBOARD
-          </span>
-          {/* On narrow screens the center nav is hidden to avoid a cramped
-              3-col squeeze; the wordmark + Sign in still anchor the header. */}
-          <div className="hidden justify-self-center md:block">
-            <GlassNav ariaLabel="Primary">
-              <GlassNavAnchor href="#how-it-works" label="How it works" />
-              <GlassNavAnchor href="#about" label="About" />
-              <GlassNavAnchor href="#faq" label="FAQ" />
-              <GlassNavLink href="/board" label="Go to board" />
-            </GlassNav>
-          </div>
-          {/* Primary action stays a solid orange CTA, anchored to the right.
-              Session-aware (client-side): swaps to "Go to board" when signed in. */}
-          <AuthCta variant="header" />
-        </div>
-      </header>
+      {/* Nav + hero + stats + how-it-works + features (operator-console design,
+          ported from the Figma reference — client component for the animations
+          and the client-side waitlist insert). */}
+      <LandingView />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-6 sm:px-8 lg:px-12">
-        {/* ── Hero (GEO + SEO value prop) ────────────────────────────────────
-            Full-viewport, two-column split: value prop + PRIMARY waitlist on the
-            left, a self-driving live-board preview on the right (shows the core
-            promise — "watch them work live" — instead of a decorative canvas).
-            Waitlist is the primary CTA pre-launch (D-WAITLIST); GitHub sign-in is
-            the secondary affordance. Copy fades in staggered (.hero-rise). */}
-        <section
-          aria-labelledby="hero-heading"
-          className="grid items-center gap-10 py-14 sm:py-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-0"
-        >
-          {/* Left column — message + conversion. */}
-          <div className="max-w-2xl">
-            <p className="hero-rise mono text-xs uppercase tracking-[0.2em] text-ink-soft" style={{ "--rise-delay": "0ms" } as React.CSSProperties}>
-              SYS:: LIVE · agent-native control plane
-            </p>
-            <h1
-              id="hero-heading"
-              className="hero-rise mt-4 text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
-              style={{ "--rise-delay": "60ms" } as React.CSSProperties}
-            >
-              Assign tasks to your AI agents over MCP and watch them work, live.
-            </h1>
-            {/* GEO: lead with the plain, declarative definition in the first 100 words. */}
-            <p className="hero-rise mt-5 text-lg text-ink" style={{ "--rise-delay": "120ms" } as React.CSSProperties}>
-              {DEFINITION}
-            </p>
-
-            {/* Primary CTA — the waitlist (pre-launch demand capture, D-WAITLIST). */}
-            <div className="hero-rise mt-8" style={{ "--rise-delay": "180ms" } as React.CSSProperties}>
-              <p className="text-sm font-medium text-ink">
-                Get notified when AgentBoard opens up.
-              </p>
-              <div className="mt-3">
-                <WaitlistForm source="hero" />
-              </div>
-              {/* Secondary: people ready to try the product now. */}
-              <p className="mono mt-4 text-xs text-ink-soft">
-                already have access?{" "}
-                <Link href="/login" className="text-orange underline-offset-2 hover:underline">
-                  Sign in with GitHub →
-                </Link>
-              </p>
-            </div>
-          </div>
-
-          {/* Right column — the animated live-board preview (decorative but
-              on-message; the <h1> remains the accessible heading). */}
-          <div
-            aria-hidden="true"
-            className="hero-rise w-full"
-            style={{ "--rise-delay": "240ms" } as React.CSSProperties}
-          >
-            <HeroBoardPreview />
-          </div>
-        </section>
-
-        {/* ── How it works (AEO / HowTo) ─────────────────────────────────── */}
-        <HowItWorks />
-
-        {/* ── About (SEO/GEO authority — E-E-A-T + entity) ───────────────── */}
-        <AboutSection />
-
+      {/* SEO-critical, content-heavy sections stay server-rendered here so they're
+          in the static HTML. Restyled to the terminal aesthetic. */}
+      <main className="mx-auto w-full max-w-7xl px-6 lg:px-10">
         {/* ── FAQ (AEO / FAQPage) ────────────────────────────────────────── */}
         <section
           id="faq"
           aria-labelledby="faq-heading"
-          className="border-t border-line py-16"
+          className="py-16"
+          style={{ borderTop: "1px solid rgba(200,80,0,0.1)" }}
         >
-          <h2 id="faq-heading" className="text-center text-2xl font-semibold tracking-tight">
+          <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::FAQ</p>
+          <h2
+            id="faq-heading"
+            className="display mb-8 uppercase text-ink"
+            style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}
+          >
             Frequently asked questions
           </h2>
-          {/* Heading centered; accordion block centered (mx-auto) but Q/A text stays
-              left-aligned — centered accordion rows with a right-side toggle read poorly. */}
-          <div className="mx-auto mt-8 max-w-3xl divide-y divide-line border-y border-line">
+          <div className="mx-auto max-w-3xl divide-y" style={{ borderColor: "rgba(200,80,0,0.12)" }}>
             {FAQ.map((item) => (
               <details key={item.q} className="group py-4">
-                <summary className="flex cursor-pointer items-center justify-between gap-4 text-base font-medium marker:content-['']">
+                <summary className="mono flex cursor-pointer items-center justify-between gap-4 text-sm font-bold uppercase tracking-wide text-ink marker:content-['']">
                   {item.q}
-                  <span
-                    aria-hidden="true"
-                    className="mono text-ink-soft transition-transform group-open:rotate-45"
-                  >
+                  <span aria-hidden="true" className="mono text-orange transition-transform group-open:rotate-45">
                     +
                   </span>
                 </summary>
-                <p className="mt-2 text-sm text-ink-soft">{item.a}</p>
+                <p className="mono mt-2 text-xs leading-relaxed text-ink-soft">{item.a}</p>
               </details>
             ))}
           </div>
         </section>
       </main>
 
-      {/* ── Footer (SEO internal links + Organization) ───────────────────── */}
-      <footer className="border-t border-line bg-paper-2/70">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-8 sm:px-8 lg:px-12 sm:flex-row sm:items-center sm:justify-between">
-          <nav
-            aria-label="Footer"
-            className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-ink-soft"
-          >
-            <a href="#how-it-works" className="hover:text-ink">
-              How it works
-            </a>
-            <a href="#about" className="hover:text-ink">
-              About
-            </a>
-            <a href="#faq" className="hover:text-ink">
-              FAQ
-            </a>
-            <a
-              href={GITHUB_URL}
-              className="hover:text-ink"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub
-            </a>
-            <Link href="/login" className="hover:text-ink">
-              Sign in
-            </Link>
-          </nav>
-          <p className="mono text-xs text-ink-soft">
-            AgentBoard · open source · MIT
+      {/* ── FINAL CTA ──────────────────────────────── */}
+      <section className="px-6 py-20 lg:px-10" style={{ borderTop: "1px solid rgba(200,80,0,0.14)" }}>
+        <div
+          className="mx-auto max-w-2xl p-10 text-center"
+          style={{
+            background: "#ffffff",
+            borderTop: "2px solid #e84500",
+            borderLeft: "1px solid rgba(200,80,0,0.15)",
+            borderRight: "1px solid rgba(200,80,0,0.15)",
+            borderBottom: "1px solid rgba(200,80,0,0.15)",
+            clipPath: "polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px))",
+          }}
+        >
+          <p className="mono mb-3 text-[10px] uppercase tracking-widest text-orange">QUEUE::FINAL_CALL</p>
+          <h2 className="display mb-4 uppercase text-ink" style={{ fontSize: "clamp(18px, 3vw, 28px)", letterSpacing: "0.06em" }}>
+            Ready to command your agents?
+          </h2>
+          <p className="mono mx-auto mb-8 max-w-md text-sm leading-relaxed text-ink-soft">
+            {DEFINITION} Join the waitlist for early access.
           </p>
+          <div className="flex justify-center">
+            <WaitlistForm source="final-cta" variant="terminal" />
+          </div>
         </div>
+      </section>
+
+      {/* ── FOOTER ─────────────────────────────────── */}
+      <footer
+        className="flex flex-col items-center justify-between gap-3 px-6 py-5 sm:flex-row lg:px-10"
+        style={{ borderTop: "1px solid rgba(200,80,0,0.12)" }}
+      >
+        <nav aria-label="Footer" className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <a href="#how-it-works" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
+            How it works
+          </a>
+          <a href="#features" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
+            Features
+          </a>
+          <a href="#faq" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
+            FAQ
+          </a>
+          <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
+            GitHub
+          </a>
+          <Link href="/login" className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-orange">
+            Sign in
+          </Link>
+        </nav>
+        <p className="mono text-[9px] uppercase tracking-widest" style={{ color: "rgba(28,24,20,0.35)" }}>
+          © 2026 AgentBoard // open source // MIT
+        </p>
       </footer>
     </div>
   );

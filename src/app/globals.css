@@ -43,8 +43,12 @@
   --color-st-done: var(--st-done);
   --color-st-failed: var(--st-failed);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Brand type (Figma reference, DECISIONS 4A): Russo One display + Space Mono
+     body/mono. Space Mono is the sans too — the operator-console look is mono
+     end to end. Geist stays available as a fallback var if ever needed. */
+  --font-display: var(--font-display), "Russo One", sans-serif;
+  --font-sans: var(--font-space-mono), var(--font-geist-sans), ui-monospace, monospace;
+  --font-mono: var(--font-space-mono), var(--font-geist-mono), ui-monospace, monospace;
 }
 
 html {
@@ -53,19 +57,25 @@ html {
 }
 
 body {
-  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  /* Faint operator grid on the paper surface. */
+  font-family: var(--font-space-mono), var(--font-geist-mono), ui-monospace, monospace;
+  /* Faint operator grid on the paper surface (warm orange tint, Figma reference). */
   background-color: var(--paper);
   background-image:
-    linear-gradient(to right, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.035) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(to right, rgba(200, 80, 0, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(200, 80, 0, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 /* Monospace utility for machine identifiers (keys, ids, timestamps). */
 .mono {
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-space-mono), var(--font-geist-mono), ui-monospace, monospace;
   font-variant-ligatures: none;
+}
+
+/* Display type — Russo One, for headings and the wordmark. Uppercase + wide
+   tracking is the operator-console signature (applied per-element, not globally). */
+.display {
+  font-family: var(--font-display), "Russo One", sans-serif;
 }
 
 /* Cut-corner operator card (clip-path), reused across cards/panels. */
