@@ -27,3 +27,33 @@ export function buildTopUrl(subreddit, { token } = {}) {
     ? `https://oauth.reddit.com/r/${sub}/top?${qs}`
     : `https://www.reddit.com/r/${sub}/top.json?${qs}`;
 }
+
+/** Full https permalink from Reddit's site-relative permalink. */
+function absolutePermalink(permalink) {
+  const p = String(permalink || "");
+  return p.startsWith("http") ? p : `https://www.reddit.com${p}`;
+}
+
+/** Map one listing child (t3 post) to the normalized shape we draft from. */
+export function normalizePost(child) {
+  const d = (child && child.data) || {};
+  return {
+    title: d.title,
+    score: Number(d.score) || 0,
+    num_comments: Number(d.num_comments) || 0,
+    flair: d.link_flair_text ?? null,
+    is_self: Boolean(d.is_self),
+    url: d.url,
+    permalink: absolutePermalink(d.permalink),
+  };
+}
+
+/** Extract + normalize every post from a Reddit listing payload. */
+export function normalizeListing(listing) {
+  const children = listing && listing.data && listing.data.children;
+  if (!Array.isArray(children)) {
+    const msg = listing && listing.message ? `: ${listing.message}` : "";
+    throw new Error(`Response is not a Reddit listing${msg}`);
+  }
+  return children.map(normalizePost);
+}
