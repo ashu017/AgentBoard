@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { userAgent, buildTopUrl, normalizePost, normalizeListing } from "../../scripts/reddit/lib.mjs";
+import { userAgent, buildTopUrl, normalizePost, normalizeListing, fetchTop } from "../../scripts/reddit/lib.mjs";
 
 describe("userAgent", () => {
   it("uses REDDIT_USER_AGENT when set", () => {
@@ -87,5 +87,48 @@ describe("normalizeListing", () => {
 
   it("throws a clear error when the payload isn't a listing", () => {
     expect(() => normalizeListing({ error: 404, message: "Not Found" })).toThrow(/listing/i);
+  });
+});
+
+describe("fetchTop", () => {
+  const okListing = {
+    kind: "Listing",
+    data: { children: [{ data: { title: "hello", score: 5, num_comments: 1, is_self: true, url: "u", permalink: "/x" } }] },
+  };
+
+  it("fetches, sends the User-Agent, and returns normalized posts", async () => {
+    let seenUrl, seenHeaders;
+    const fetchImpl = async (url, opts) => {
+      seenUrl = url;
+      seenHeaders = opts.headers;
+      return { ok: true, status: 200, json: async () => okListing };
+    };
+    const posts = await fetchTop("SideProject", { fetchImpl, env: { REDDIT_USER_AGENT: "ua/1 by u/me" } });
+    expect(seenUrl).toContain("https://www.reddit.com/r/SideProject/top.json");
+    expect(seenHeaders["User-Agent"]).toBe("ua/1 by u/me");
+    expect(posts).toEqual([
+      { title: "hello", score: 5, num_comments: 1, flair: null, is_self: true, url: "u", permalink: "https://www.reddit.com/x" },
+    ]);
+  });
+
+  it("sends the Authorization header and uses the oauth host when a token is set", async () => {
+    let seenUrl, seenHeaders;
+    const fetchImpl = async (url, opts) => {
+      seenUrl = url; seenHeaders = opts.headers;
+      return { ok: true, status: 200, json: async () => okListing };
+    };
+    await fetchTop("SaaS", { fetchImpl, env: { REDDIT_BEARER_TOKEN: "tok123" } });
+    expect(seenUrl).toContain("https://oauth.reddit.com/r/SaaS/top");
+    expect(seenHeaders["Authorization"]).toBe("bearer tok123");
+  });
+
+  it("throws a clear error on a 429 rate limit", async () => {
+    const fetchImpl = async () => ({ ok: false, status: 429, text: async () => "slow down" });
+    await expect(fetchTop("SaaS", { fetchImpl, env: {} })).rejects.toThrow(/429|rate limit/i);
+  });
+
+  it("throws a clear error on a non-200 (e.g. private/banned sub)", async () => {
+    const fetchImpl = async () => ({ ok: false, status: 403, text: async () => "Forbidden" });
+    await expect(fetchTop("some_private_sub", { fetchImpl, env: {} })).rejects.toThrow(/403/);
   });
 });

@@ -57,3 +57,23 @@ export function normalizeListing(listing) {
   }
   return children.map(normalizePost);
 }
+
+/**
+ * Fetch a subreddit's top-100 of the month and return normalized posts.
+ * fetchImpl is injectable for tests; defaults to global fetch. env is
+ * injectable too so tests don't touch process.env.
+ */
+export async function fetchTop(subreddit, { fetchImpl = fetch, env = process.env } = {}) {
+  const token = env.REDDIT_BEARER_TOKEN || undefined;
+  const url = buildTopUrl(subreddit, { token });
+  const headers = { "User-Agent": userAgent(env) };
+  if (token) headers["Authorization"] = `bearer ${token}`;
+
+  const res = await fetchImpl(url, { headers });
+  if (!res.ok) {
+    const body = typeof res.text === "function" ? await res.text() : "";
+    const hint = res.status === 429 ? " (rate limit — back off and retry later)" : "";
+    throw new Error(`Reddit request failed: ${res.status}${hint} for ${url}\n${body.slice(0, 300)}`);
+  }
+  return normalizeListing(await res.json());
+}
