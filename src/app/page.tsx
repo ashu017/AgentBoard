@@ -4,16 +4,15 @@ import {
   SITE_ORIGIN,
   GITHUB_URL,
   DEFINITION,
-  TAGLINE,
   HOW_IT_WORKS,
   FAQ,
 } from "@/lib/site";
-import { AgentBoardPixelHero } from "@/components/ui/animated-hero-section";
 import { HowItWorks } from "@/app/_components/HowItWorks";
 import { AboutSection } from "@/app/_components/AboutSection";
 import { GlassNav, GlassNavAnchor, GlassNavLink } from "@/app/_components/GlassNav";
 import { AuthCta } from "@/app/_components/AuthCta";
 import { WaitlistForm } from "@/app/_components/WaitlistForm";
+import { HeroBoardPreview } from "@/app/_components/HeroBoardPreview";
 
 // Public marketing landing. Fully static — no session, no DB — so it renders for
 // logged-out visitors without redirecting and gets the fast-LCP SEO win the app
@@ -133,83 +132,59 @@ export default function LandingPage() {
       </header>
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-6 sm:px-8 lg:px-12">
-        {/* ── Hero (GEO + SEO value prop) ────────────────────────────────── */}
-        <section aria-labelledby="hero-heading" className="py-16 sm:py-24">
-          <p className="mono text-xs uppercase tracking-[0.2em] text-ink-soft">
-            SYS:: LIVE · agent-native control plane
-          </p>
-          <h1
-            id="hero-heading"
-            className="mt-4 max-w-3xl text-4xl font-semibold leading-tight tracking-tight sm:text-5xl"
-          >
-            Assign tasks to your AI agents over MCP and watch them work, live.
-          </h1>
-          {/* GEO: lead with the plain, declarative definition in the first 100 words. */}
-          <p className="mt-5 max-w-2xl text-lg text-ink">{DEFINITION}</p>
-          <p className="mt-3 max-w-2xl text-base text-ink-soft">{TAGLINE}</p>
-
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <AuthCta variant="hero" />
-            <a
-              href="#how-it-works"
-              className="mono border border-line px-5 py-2.5 text-sm text-ink-soft hover:text-ink"
-            >
-              How it works ↓
-            </a>
-          </div>
-
-          {/* Pre-launch demand capture (DECISIONS D-WAITLIST). Not ready to sign
-              in with GitHub? Leave an email — a lower-commitment interest signal
-              than the OAuth CTA above, so we can gauge demand before launch. */}
-          <div className="mt-8 max-w-md border-t border-line pt-6">
-            <p className="text-sm text-ink-soft">
-              Not ready to sign in? Get notified when AgentBoard opens up.
+        {/* ── Hero (GEO + SEO value prop) ────────────────────────────────────
+            Full-viewport, two-column split: value prop + PRIMARY waitlist on the
+            left, a self-driving live-board preview on the right (shows the core
+            promise — "watch them work live" — instead of a decorative canvas).
+            Waitlist is the primary CTA pre-launch (D-WAITLIST); GitHub sign-in is
+            the secondary affordance. Copy fades in staggered (.hero-rise). */}
+        <section
+          aria-labelledby="hero-heading"
+          className="grid items-center gap-10 py-14 sm:py-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.05fr_1fr] lg:gap-12 lg:py-0"
+        >
+          {/* Left column — message + conversion. */}
+          <div className="max-w-2xl">
+            <p className="hero-rise mono text-xs uppercase tracking-[0.2em] text-ink-soft" style={{ "--rise-delay": "0ms" } as React.CSSProperties}>
+              SYS:: LIVE · agent-native control plane
             </p>
-            <div className="mt-3">
-              <WaitlistForm source="hero" />
+            <h1
+              id="hero-heading"
+              className="hero-rise mt-4 text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl"
+              style={{ "--rise-delay": "60ms" } as React.CSSProperties}
+            >
+              Assign tasks to your AI agents over MCP and watch them work, live.
+            </h1>
+            {/* GEO: lead with the plain, declarative definition in the first 100 words. */}
+            <p className="hero-rise mt-5 text-lg text-ink" style={{ "--rise-delay": "120ms" } as React.CSSProperties}>
+              {DEFINITION}
+            </p>
+
+            {/* Primary CTA — the waitlist (pre-launch demand capture, D-WAITLIST). */}
+            <div className="hero-rise mt-8" style={{ "--rise-delay": "180ms" } as React.CSSProperties}>
+              <p className="text-sm font-medium text-ink">
+                Get notified when AgentBoard opens up.
+              </p>
+              <div className="mt-3">
+                <WaitlistForm source="hero" />
+              </div>
+              {/* Secondary: people ready to try the product now. */}
+              <p className="mono mt-4 text-xs text-ink-soft">
+                already have access?{" "}
+                <Link href="/login" className="text-orange underline-offset-2 hover:underline">
+                  Sign in with GitHub →
+                </Link>
+              </p>
             </div>
           </div>
 
-          {/* Animated operator-console hero: a contained, decorative pixel-Pong
-              canvas spelling AGENTBOARD on the paper surface. Decorative only —
-              the real <h1> above is the accessible/SEO heading. */}
-          <div className="clip-corner mt-12 border border-line bg-paper p-1.5">
-            <div className="relative h-[360px] w-full sm:h-[440px]">
-              <AgentBoardPixelHero />
-            </div>
-          </div>
-
-          {/* Calm operator-console visual: a static board-preview strip. */}
+          {/* Right column — the animated live-board preview (decorative but
+              on-message; the <h1> remains the accessible heading). */}
           <div
             aria-hidden="true"
-            className="clip-corner mt-4 border border-line bg-paper-2 p-4"
+            className="hero-rise w-full"
+            style={{ "--rise-delay": "240ms" } as React.CSSProperties}
           >
-            <div className="mono flex items-center gap-3 text-xs text-ink-soft">
-              <span className="text-st-done">● LIVE</span>
-              <span>all healthy</span>
-              <span className="ml-auto">3 in progress · 1 in review · 12 done</span>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {[
-                { label: "Todo", color: "var(--st-todo)", n: 4 },
-                { label: "In progress", color: "var(--st-progress)", n: 3 },
-                { label: "In review", color: "var(--st-review)", n: 1 },
-                { label: "Done", color: "var(--st-done)", n: 12 },
-              ].map((c) => (
-                <div key={c.label} className="border border-line bg-paper p-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-sm">
-                      <span
-                        className="inline-block h-2 w-2 rounded-full"
-                        style={{ background: c.color }}
-                      />
-                      {c.label}
-                    </span>
-                    <span className="mono text-xs text-ink-soft">{c.n}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <HeroBoardPreview />
           </div>
         </section>
 
