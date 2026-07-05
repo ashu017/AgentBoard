@@ -812,7 +812,20 @@ NOT AgentBoard product agents — though the dogfooding dream is to eventually r
   boundary, advisor scans.
 - **Social / launch agent** — drafts posts for Reddit (subreddits), Hacker News, Product
   Hunt, LinkedIn. **Draft-only**; actual posting needs API creds + per-post human approval
-  (outward-facing).
+  (outward-facing). **Revised 2026-07-05 (P0, Reddit slice):** building the Reddit slice as
+  `.claude/agents/reddit-marketer.md` + `scripts/reddit/*.mjs` (Approach B). It researches
+  curated subreddits (top-100/month via Reddit's OAuth2 script-app auth — password grant on
+  `www.reddit.com/api/v1/access_token`, authenticated calls on `oauth.reddit.com`), drafts
+  on-topic posts, and — past a **hard per-post human approval gate** (an explicit `--confirm`
+  flag on `submit-post.mjs`) — publishes live via `POST /api/submit`. The earlier
+  "draft-only" stance is superseded *only* for this approval-gated path; HN/PH/LinkedIn stay
+  draft-only. **Devvit evaluated & rejected 2026-07-05:** a Devvit Web app
+  (`~/Desktop/reddit/agentboard`) builds interactive posts that run on Reddit's servers and
+  can only post into subreddits that *installed the app* (a moderator action), so it
+  structurally cannot post promotional content into third-party communities — the whole
+  point. Devvit could later serve a separate "interactive AgentBoard presence on our own
+  subreddit" initiative; that is not this agent. Spec:
+  `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
 - **Design agent** (low priority) — Figma UI designs. Partly blocked: Figma MCP is on the
   Amazon account (IP concern) until a personal Figma is sorted.
 - **Docs / decision-log agent** — keeps DECISIONS/design/CLAUDE/HANDOFF consistent + release notes.
