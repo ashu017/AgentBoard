@@ -19,9 +19,18 @@
 - Create: `tests/reddit/lib.test.ts` — unit tests for all `lib.mjs` functions (mocked fetch).
 - Create: `.claude/agents/reddit-marketer.md` — the subagent: seed list, rules, drafting workflow.
 - Modify: `.gitignore` — ignore `drafts/`.
-- Modify: `.env.example` — document optional `REDDIT_USER_AGENT` + `REDDIT_BEARER_TOKEN`.
+- Modify: `.env.example` — document optional `REDDIT_USER_AGENT` + `REDDIT_BEARER_TOKEN` + Telegram vars.
 
-Analysis of the top-100 (themes, title shapes) is done by the agent itself (it's an LLM) — no `analyze.mjs` script (YAGNI).
+Weekly-automation files (Tasks 9–12):
+- Create: `scripts/reddit/send-telegram.mjs` — POST one message to the Telegram Bot API.
+- Create: `scripts/reddit/telegram-chat-id.mjs` — one-off helper to print your chat id.
+- Create: `scripts/reddit/weekly-run.sh` — orchestrator: per seed sub → `claude -p` draft → send-telegram.
+- Create: `ops/launchd/com.agentboard.reddit-weekly.plist` — launchd schedule template.
+- Create: `tests/reddit/send-telegram.test.ts` — unit tests for the Telegram sender (mocked fetch).
+
+Analysis of the top-100 (themes, title shapes) is done by the agent itself (it's an LLM) — no `analyze.mjs` script (YAGNI). The weekly run reuses the `reddit-marketer` agent via `claude -p` rather than duplicating the drafting prompt.
+
+The **seed subreddit list is the single source of truth** and lives in one place — `scripts/reddit/seeds.mjs` (Task 1b) — imported by both the agent's guidance and `weekly-run.sh`, so the weekly job and the interactive agent target the same subs.
 
 ---
 
@@ -54,6 +63,12 @@ REDDIT_USER_AGENT=agentboard-research/0.1 by u/YOUR_USERNAME
 # Optional short-lived bearer token — if set, reads use oauth.reddit.com for higher
 # rate limits. Tokens expire ~1h; purely a convenience. We do NOT create an OAuth app.
 # REDDIT_BEARER_TOKEN=
+
+# --- Telegram delivery (weekly cron only; OPTIONAL) ---
+# Create a bot via @BotFather to get the token; run telegram-chat-id.mjs for the chat id.
+# Used by the weekly launchd job to DM you drafts. No Reddit posting — you upload by hand.
+# TELEGRAM_BOT_TOKEN=
+# TELEGRAM_CHAT_ID=
 ```
 
 - [ ] **Step 3: Commit**
@@ -61,6 +76,84 @@ REDDIT_USER_AGENT=agentboard-research/0.1 by u/YOUR_USERNAME
 ```bash
 git add .gitignore .env.example
 git commit -m "chore(reddit): gitignore drafts, document optional research env vars"
+```
+
+---
+
+## Task 1b: Seed subreddit list (single source of truth)
+
+**Files:**
+- Create: `scripts/reddit/seeds.mjs`
+- Test: `tests/reddit/seeds.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/reddit/seeds.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { SEEDS, seedNames } from "../../scripts/reddit/seeds.mjs";
+
+describe("SEEDS", () => {
+  it("is a non-empty array of well-formed entries", () => {
+    expect(Array.isArray(SEEDS)).toBe(true);
+    expect(SEEDS.length).toBeGreaterThan(0);
+    for (const s of SEEDS) {
+      expect(typeof s.sub).toBe("string");
+      expect(s.sub.length).toBeGreaterThan(0);
+      expect(s.kind === "text" || s.kind === "link").toBe(true);
+      expect(typeof s.promo).toBe("string"); // the self-promo rule note
+    }
+  });
+
+  it("has no duplicate subs", () => {
+    const names = SEEDS.map((s) => s.sub.toLowerCase());
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("seedNames returns the plain sub names", () => {
+    expect(seedNames()).toEqual(SEEDS.map((s) => s.sub));
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run tests/reddit/seeds.test.ts`
+Expected: FAIL — cannot resolve `seeds.mjs`.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `scripts/reddit/seeds.mjs`:
+
+```js
+// The curated seed subreddits — the SINGLE SOURCE OF TRUTH for both the
+// reddit-marketer agent and the weekly cron. Each entry names the community's
+// self-promo posture. Verify against the sub's live rules before drafting.
+export const SEEDS = [
+  { sub: "alphaandbetausers", kind: "text", promo: "Beta-test recruiting is the point; a clear 'looking for testers' post fits." },
+  { sub: "SideProject", kind: "text", promo: "Show-and-tell welcome; be genuine, no hard-sell. Flair often required." },
+  { sub: "SaaS", kind: "text", promo: "Value-first (lessons/metrics/teardowns); promo often confined to weekly threads — check." },
+  { sub: "artificial", kind: "text", promo: "Lead with an insight; naked promo removed. Frame AgentBoard as a concrete example." },
+  { sub: "mcp", kind: "text", promo: "Technical MCP community; genuine 'how we used MCP for X' posts land well." },
+];
+
+/** Plain list of sub names, in order. */
+export function seedNames() {
+  return SEEDS.map((s) => s.sub);
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run tests/reddit/seeds.test.ts`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/reddit/seeds.mjs tests/reddit/seeds.test.ts
+git commit -m "feat(reddit): curated seed subreddit list (single source of truth)"
 ```
 
 ---
@@ -533,21 +626,23 @@ hand.** Never attempt to post, and never draft the same content for multiple sub
 
 ## Seed subreddits (curated)
 
-Each entry: what the community is, and its self-promo posture. Verify rules against the
-sub's current sidebar/wiki before drafting — rules change.
+The canonical seed list lives in `scripts/reddit/seeds.mjs` (the single source of truth,
+shared with the weekly cron). Read it at the start of a run: `cat scripts/reddit/seeds.mjs`.
+Each entry has `sub`, `kind` (text|link), and `promo` (its self-promo posture). Current subs:
 
 - **r/alphaandbetausers** — early adopters seeking apps to test. Self-promo is the point;
-  a clear "looking for beta testers" post fits. Kind: text or link.
+  a clear "looking for beta testers" post fits.
 - **r/SideProject** — makers sharing projects. Show-and-tell welcome; be genuine, no
-  hard-sell. Kind: text (with a link in body). Flair often required.
+  hard-sell. Flair often required.
 - **r/SaaS** — SaaS builders/operators. Value-first (lessons, metrics, teardowns) far
   outperforms "check out my app." Self-promo often confined to weekly threads — check.
 - **r/artificial** — broad AI audience. Must lead with an idea/insight; naked promo removed.
   Frame AgentBoard as a concrete example within a substantive point.
 - **r/mcp** — Model Context Protocol community; highly relevant (AgentBoard is MCP-native).
-  Technical, genuine "here's how we used MCP for X" posts land well. Kind: text.
+  Technical, genuine "here's how we used MCP for X" posts land well.
 
-Add subs only when you can state the community + its self-promo rule. If a sub bans
+Always verify rules against the sub's current sidebar/wiki before drafting — rules change.
+To add a sub, edit `seeds.mjs` and state the community + its self-promo rule. If a sub bans
 self-promo outright, draft a value-only post (no product pitch) or skip it.
 
 ## Output format for a draft file
@@ -582,14 +677,369 @@ git commit -m "feat(reddit): reddit-marketer research+draft subagent (read-only,
 
 ---
 
-## Task 8: Full test sweep + final verification
+## Task 9: `send-telegram.mjs` — Telegram sender (one message per call)
+
+**Files:**
+- Create: `scripts/reddit/send-telegram.mjs`
+- Test: `tests/reddit/send-telegram.test.ts`
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `tests/reddit/send-telegram.test.ts`:
+
+```ts
+import { describe, it, expect } from "vitest";
+import { buildSendUrl, sendMessage } from "../../scripts/reddit/send-telegram.mjs";
+
+describe("buildSendUrl", () => {
+  it("builds the Bot API sendMessage URL from the token", () => {
+    expect(buildSendUrl("123:ABC")).toBe("https://api.telegram.org/bot123:ABC/sendMessage");
+  });
+  it("throws when the token is missing", () => {
+    expect(() => buildSendUrl("")).toThrow(/token/i);
+  });
+});
+
+describe("sendMessage", () => {
+  it("POSTs chat_id + text as JSON and resolves on ok", async () => {
+    let seenUrl, seenBody, seenHeaders;
+    const fetchImpl = async (url, opts) => {
+      seenUrl = url; seenBody = JSON.parse(opts.body); seenHeaders = opts.headers;
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    };
+    await sendMessage({ token: "123:ABC", chatId: "999", text: "hello" }, { fetchImpl });
+    expect(seenUrl).toBe("https://api.telegram.org/bot123:ABC/sendMessage");
+    expect(seenHeaders["Content-Type"]).toBe("application/json");
+    expect(seenBody).toEqual({ chat_id: "999", text: "hello", disable_web_page_preview: true });
+  });
+
+  it("throws a clear error when Telegram returns non-ok", async () => {
+    const fetchImpl = async () => ({ ok: false, status: 400, text: async () => '{"description":"chat not found"}' });
+    await expect(
+      sendMessage({ token: "123:ABC", chatId: "bad", text: "x" }, { fetchImpl })
+    ).rejects.toThrow(/400|chat not found/i);
+  });
+
+  it("throws when chatId or text is missing", async () => {
+    const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({}) });
+    await expect(sendMessage({ token: "t", chatId: "", text: "x" }, { fetchImpl })).rejects.toThrow(/chat/i);
+    await expect(sendMessage({ token: "t", chatId: "1", text: "" }, { fetchImpl })).rejects.toThrow(/text/i);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `npx vitest run tests/reddit/send-telegram.test.ts`
+Expected: FAIL — module not found.
+
+- [ ] **Step 3: Write the implementation**
+
+Create `scripts/reddit/send-telegram.mjs`:
+
+```js
+// Send a single message to a Telegram chat via the Bot API. One message per
+// call (the weekly job calls this once per subreddit, sequentially). Injectable
+// fetch for tests. Read-only w.r.t. Reddit — this only writes to Telegram.
+import { readFileSync } from "node:fs";
+
+export function buildSendUrl(token) {
+  if (!token) throw new Error("TELEGRAM_BOT_TOKEN is required");
+  return `https://api.telegram.org/bot${token}/sendMessage`;
+}
+
+export async function sendMessage({ token, chatId, text }, { fetchImpl = fetch } = {}) {
+  if (!chatId) throw new Error("chat_id is required (set TELEGRAM_CHAT_ID)");
+  if (!text) throw new Error("text is required (nothing to send)");
+  const res = await fetchImpl(buildSendUrl(token), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+  });
+  if (!res.ok) {
+    const body = typeof res.text === "function" ? await res.text() : "";
+    throw new Error(`Telegram sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+// --- CLI: node send-telegram.mjs "message text" ---
+// Reads TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID from env or .env.local.
+function loadEnv() {
+  const env = { ...process.env };
+  try {
+    for (const line of readFileSync(".env.local", "utf8").split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("#") || !t.includes("=")) continue;
+      const i = line.indexOf("=");
+      const key = line.slice(0, i).trim();
+      if (env[key] === undefined) env[key] = line.slice(i + 1).trim();
+    }
+  } catch { /* .env.local optional */ }
+  return env;
+}
+
+// Run as CLI only when invoked directly (not when imported by tests).
+if (process.argv[1] && process.argv[1].endsWith("send-telegram.mjs")) {
+  const text = process.argv[2];
+  const env = loadEnv();
+  sendMessage({ token: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID, text })
+    .then(() => console.error("✓ sent to Telegram"))
+    .catch((err) => { console.error(`✗ ${err.message}`); process.exit(1); });
+}
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `npx vitest run tests/reddit/send-telegram.test.ts`
+Expected: PASS (6 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/reddit/send-telegram.mjs tests/reddit/send-telegram.test.ts
+git commit -m "feat(reddit): send-telegram — one Bot API message per call"
+```
+
+---
+
+## Task 10: `telegram-chat-id.mjs` — one-off chat-id helper
+
+**Files:**
+- Create: `scripts/reddit/telegram-chat-id.mjs`
+
+- [ ] **Step 1: Write the helper**
+
+Create `scripts/reddit/telegram-chat-id.mjs`:
+
+```js
+#!/usr/bin/env node
+// One-off helper: after you create the bot and send it any message, run this to
+// print your chat_id. Put it in .env.local as TELEGRAM_CHAT_ID.
+//   1. Create a bot with @BotFather, copy its token into .env.local
+//   2. Open the bot in Telegram and send it "hi"
+//   3. node scripts/reddit/telegram-chat-id.mjs
+import { readFileSync } from "node:fs";
+
+function loadEnv() {
+  const env = { ...process.env };
+  try {
+    for (const line of readFileSync(".env.local", "utf8").split("\n")) {
+      const t = line.trim();
+      if (!t || t.startsWith("#") || !t.includes("=")) continue;
+      const i = line.indexOf("=");
+      const key = line.slice(0, i).trim();
+      if (env[key] === undefined) env[key] = line.slice(i + 1).trim();
+    }
+  } catch { /* optional */ }
+  return env;
+}
+
+const env = loadEnv();
+const token = env.TELEGRAM_BOT_TOKEN;
+if (!token) { console.error("✗ set TELEGRAM_BOT_TOKEN in .env.local first"); process.exit(1); }
+
+const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+const data = await res.json();
+const chats = new Map();
+for (const u of data.result || []) {
+  const chat = u.message?.chat || u.channel_post?.chat;
+  if (chat) chats.set(chat.id, chat.username || chat.title || chat.first_name || "");
+}
+if (chats.size === 0) {
+  console.error("✗ no updates yet — open the bot in Telegram, send it a message, then re-run.");
+  process.exit(1);
+}
+for (const [id, name] of chats) console.log(`chat_id=${id}  (${name})`);
+```
+
+- [ ] **Step 2: Verify it errors cleanly without a token**
+
+Run: `TELEGRAM_BOT_TOKEN= node scripts/reddit/telegram-chat-id.mjs 2>&1 | head -1` (from a dir with no `.env.local`, or temporarily unset)
+Expected: `✗ set TELEGRAM_BOT_TOKEN in .env.local first`. (Live behavior needs a real bot — verified in Task 12 setup.)
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/reddit/telegram-chat-id.mjs
+git commit -m "feat(reddit): telegram-chat-id helper (fetch chat id from getUpdates)"
+```
+
+---
+
+## Task 11: `weekly-run.sh` — the cron orchestrator
+
+**Files:**
+- Create: `scripts/reddit/weekly-run.sh`
+
+- [ ] **Step 1: Write the orchestrator**
+
+Create `scripts/reddit/weekly-run.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Weekly draft run: for each seed subreddit, ask the reddit-marketer agent
+# (via Claude Code headless) to research + draft one post, then send that draft
+# to Telegram as its own message. Reads Reddit + writes Telegram only — never
+# posts to Reddit. The human uploads by hand.
+#
+# Invoked by launchd (ops/launchd/com.agentboard.reddit-weekly.plist).
+set -euo pipefail
+
+# Resolve repo root (this script lives in scripts/reddit/).
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
+
+LOG="${ROOT}/drafts/reddit/weekly-$(date +%Y%m%d).log"
+mkdir -p "${ROOT}/drafts/reddit"
+
+# Read the seed sub names from the single source of truth.
+SUBS=$(node -e "import('./scripts/reddit/seeds.mjs').then(m => console.log(m.seedNames().join('\n')))")
+
+echo "[weekly-run] $(date) targeting: $(echo "$SUBS" | tr '\n' ' ')" | tee -a "$LOG"
+
+for SUB in $SUBS; do
+  echo "[weekly-run] drafting for r/${SUB}…" | tee -a "$LOG"
+
+  # Headless Claude Code: reuse the reddit-marketer agent to produce ONE draft.
+  # -p runs a single non-interactive prompt; the agent writes to drafts/reddit/.
+  PROMPT="Use the reddit-marketer agent. Research r/${SUB} (run fetch-top.mjs ${SUB}), then write ONE value-first draft post to drafts/reddit/${SUB}-weekly.md following the agent's draft format. Do not post to Reddit. After writing, print ONLY the final draft file's contents to stdout."
+
+  if DRAFT=$(claude -p "$PROMPT" 2>>"$LOG"); then
+    # Send this sub's draft as its own Telegram message, then pause so messages
+    # arrive individually. A failure here must not abort the other subs.
+    if node scripts/reddit/send-telegram.mjs "r/${SUB} — weekly draft:
+
+${DRAFT}" >>"$LOG" 2>&1; then
+      echo "[weekly-run] ✓ sent r/${SUB}" | tee -a "$LOG"
+    else
+      echo "[weekly-run] ✗ telegram send failed for r/${SUB} (see log)" | tee -a "$LOG"
+    fi
+  else
+    echo "[weekly-run] ✗ draft failed for r/${SUB} (see log)" | tee -a "$LOG"
+  fi
+
+  sleep 5
+done
+
+echo "[weekly-run] done $(date)" | tee -a "$LOG"
+```
+
+- [ ] **Step 2: Make it executable + shellcheck-clean**
+
+Run:
+```bash
+chmod +x scripts/reddit/weekly-run.sh
+bash -n scripts/reddit/weekly-run.sh && echo "syntax ok"
+```
+Expected: `syntax ok` (no syntax errors). `bash -n` only parses; it does not run the loop.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/reddit/weekly-run.sh
+git commit -m "feat(reddit): weekly-run.sh orchestrator (claude -p draft → telegram per sub)"
+```
+
+---
+
+## Task 12: `launchd` schedule + setup docs
+
+**Files:**
+- Create: `ops/launchd/com.agentboard.reddit-weekly.plist`
+
+- [ ] **Step 1: Write the launchd plist template**
+
+Create `ops/launchd/com.agentboard.reddit-weekly.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Weekly Reddit draft → Telegram job. Runs Mon 09:00 local.
+  SETUP:
+    1. Replace __REPO__ with the absolute path to this repo, and __NODE_BIN_DIR__
+       with the dir containing your `node` + `claude` (run: dirname "$(which node)").
+    2. Copy to ~/Library/LaunchAgents/com.agentboard.reddit-weekly.plist
+    3. Load it:   launchctl load ~/Library/LaunchAgents/com.agentboard.reddit-weekly.plist
+       Unload:    launchctl unload ~/Library/LaunchAgents/com.agentboard.reddit-weekly.plist
+       Run now:   launchctl start com.agentboard.reddit-weekly
+  launchd (not cron) runs a missed job on the next wake if the Mac was asleep at 09:00.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agentboard.reddit-weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/reddit/weekly-run.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__NODE_BIN_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__REPO__/drafts/reddit/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/drafts/reddit/launchd.err.log</string>
+</dict>
+</plist>
+```
+
+- [ ] **Step 2: Verify the plist is well-formed XML**
+
+Run: `plutil -lint ops/launchd/com.agentboard.reddit-weekly.plist`
+Expected: `ops/launchd/com.agentboard.reddit-weekly.plist: OK`
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add ops/launchd/com.agentboard.reddit-weekly.plist
+git commit -m "feat(reddit): launchd weekly schedule template + setup notes"
+```
+
+---
+
+## Task 13: Manual end-to-end verification (NOT in CI)
+
+**Files:** none (verification only). Requires `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` in `.env.local`.
+
+- [ ] **Step 1: Get your chat id**
+
+Create a bot via @BotFather, put its token in `.env.local`, message the bot once, then run:
+`node scripts/reddit/telegram-chat-id.mjs`
+Expected: prints `chat_id=…`. Put that value in `.env.local` as `TELEGRAM_CHAT_ID`.
+
+- [ ] **Step 2: Send a test Telegram message**
+
+Run: `node scripts/reddit/send-telegram.mjs "AgentBoard weekly test ✅"`
+Expected: `✓ sent to Telegram` and the message arrives in your Telegram.
+
+- [ ] **Step 3: Dry-run the weekly job once**
+
+Run: `bash scripts/reddit/weekly-run.sh`
+Expected: one Telegram message per seed subreddit (arriving individually), drafts written under `drafts/reddit/`, and a `weekly-*.log` with `✓ sent` lines. If `claude` isn't on PATH, install/point to it and retry.
+
+---
+
+## Task 14: Full test sweep + final verification
 
 **Files:** none (verification only)
 
 - [ ] **Step 1: Run the whole unit suite**
 
 Run: `npm test`
-Expected: all tests pass, including the new `tests/reddit/lib.test.ts` (14 tests). No live Reddit calls occur in the suite.
+Expected: all tests pass, including `tests/reddit/seeds.test.ts` (3), `tests/reddit/lib.test.ts` (14), and `tests/reddit/send-telegram.test.ts` (6). No live Reddit or Telegram calls occur in the suite.
 
 - [ ] **Step 2: Confirm no secrets or drafts are tracked**
 
@@ -599,5 +1049,5 @@ Expected: clean tree (all work committed); `git check-ignore` prints `drafts/x.m
 - [ ] **Step 3: Confirm the branch is ready for PR**
 
 Run: `git log --oneline main..HEAD`
-Expected: the sequence of commits from Tasks 1–7. The feature is complete: research reads work, the agent exists, nothing posts.
+Expected: the sequence of commits from Tasks 1–12. The feature is complete: research reads work, the agent exists, the weekly job drafts + delivers to Telegram, and nothing posts to Reddit.
 ```

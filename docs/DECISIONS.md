@@ -830,6 +830,13 @@ NOT AgentBoard product agents — though the dogfooding dream is to eventually r
   can only post into subreddits that *installed the app* (a moderator action), so it can't
   post promo into third-party communities. It remains the *sanctioned* path for a separate
   future "interactive AgentBoard presence on our own subreddit" initiative — not this agent.
+  **Weekly automation added 2026-07-05 (P0.5), still draft-only:** a **local `launchd` job**
+  (Mon 09:00) runs the drafting via **Claude Code headless (`claude -p`)** against the
+  `reddit-marketer` subagent, then delivers **one Telegram message per seed subreddit**
+  (`send-telegram.mjs`, sequential) for the user to upload by hand. The cron only reads
+  Reddit + writes Telegram — no Reddit posting code exists. `launchd` (not plain `cron`)
+  chosen so a run missed while the Mac is asleep fires on next wake. Telegram creds
+  (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) live in gitignored `.env.local`.
   Spec: `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
 - **Design agent** (low priority) — Figma UI designs. Partly blocked: Figma MCP is on the
   Amazon account (IP concern) until a personal Figma is sorted.

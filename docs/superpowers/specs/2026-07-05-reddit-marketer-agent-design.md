@@ -109,15 +109,59 @@ credentials, no posting script.**
   a value-only draft or none.
 - `drafts/` gitignored. No secrets involved.
 
+## Weekly automation (P0.5 — local cron → Telegram)
+
+A scheduled weekly run that drafts posts and delivers them to Telegram for the human to
+upload by hand. **Still draft-only**: the cron never posts to Reddit.
+
+- **Host:** the user's Mac via **`launchd`** (preferred over plain `cron` — it can run a
+  missed job on next wake; a Mac asleep at the scheduled time otherwise skips the run).
+  A `com.agentboard.reddit-weekly.plist` template + install instructions live in the repo.
+  Default schedule: **Monday 09:00 local**.
+- **Draft engine:** the cron shell script invokes **Claude Code headless** (`claude -p`)
+  pointed at the `reddit-marketer` subagent, so the weekly run reuses the exact same
+  research + drafting logic (single source of truth — no duplicated prompt).
+- **Targets:** iterate the **full curated seed list**, one draft per subreddit.
+- **Delivery:** **one Telegram message per subreddit, sent sequentially** (not a combined
+  digest), via Telegram Bot API `sendMessage`, with a short delay between sends so they
+  arrive as distinct, individually-actionable messages.
+
+### Components
+
+```
+scripts/reddit/
+  send-telegram.mjs         # POST sendMessage to Telegram Bot API; one message per call
+  telegram-chat-id.mjs      # one-off helper: print your chat_id from getUpdates
+  weekly-run.sh             # orchestrator: for each seed sub → claude -p draft → send-telegram
+
+ops/launchd/
+  com.agentboard.reddit-weekly.plist   # launchd schedule template + install notes
+```
+
+### Config (`.env.local`, all optional unless you run the weekly job)
+
+- `TELEGRAM_BOT_TOKEN` — from @BotFather.
+- `TELEGRAM_CHAT_ID` — your chat id (use `telegram-chat-id.mjs` to fetch it once).
+
+### Safety (same guarantee extends here)
+
+- The weekly job **only reads Reddit and writes to Telegram** — there is still no Reddit
+  posting code anywhere. The human uploads to Reddit manually.
+- Telegram secrets live in `.env.local` (gitignored); never printed or committed.
+- `send-telegram.mjs` fails loud on a non-200 from Telegram; a failed send for one sub does
+  not abort the others.
+
 ## Testing
 
-- Unit-test `fetch-top.mjs` normalization + error paths (Vitest, mocked fetch). No live calls
-  in CI.
-- Reading may be smoke-tested live (public JSON, low-risk) during development.
+- Unit-test `lib.mjs` normalization + error paths, and `send-telegram.mjs` payload building
+  + error handling (Vitest, mocked fetch). No live calls in CI.
+- Reading and Telegram delivery may be smoke-tested live (low-risk) during development.
+- `weekly-run.sh` is verified manually (a single dry-run invocation), not in CI.
 
 ## Out of scope for P0
 
-- Any automated posting to Reddit (prohibited by policy; human posts by hand).
+- Any automated posting to Reddit (prohibited by policy; human posts by hand). The weekly
+  cron automates *drafting + Telegram delivery* only — never Reddit posting.
 - OAuth script app / credentials (not needed for read-only public JSON).
 - Wiring into AgentBoard's MCP agent plane (separate effort).
 - Dynamic subreddit discovery (curated seed list only in P0).
