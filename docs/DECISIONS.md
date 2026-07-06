@@ -921,6 +921,26 @@ by default (opens from the header's awaiting-review count).
 leaf components (header / modals / sidebar / project-view / live-feed) fan out into parallel
 worktrees; a final pass removes superseded code (old `BoardClient` internals + the landing
 leftovers flagged in D-LANDING-FIGMA). Full design source: the Figma file above.
+**Landed (2026-07-06, `feat/board-redesign-foundation`):** `BoardClient` rewritten from the
+swimlane layout to the single-project layout; sections extracted to
+`src/app/board/_components/` (`Header`, `Sidebar`, `ProjectView`, `LiveFeed`, `board-ui`
+helpers). `page.tsx` + `BoardClient` props unchanged — the board still loads ALL projects+tasks;
+the sidebar lists every project and the middle shows the one selected (default: first
+non-Miscellaneous, else first). Preserved verbatim: the D9-RT realtime `setAuth`+refetch,
+the dataTransfer drag-drop (no async-state race), the inline yes/no + option-modal review loop,
+and all New/Edit/Delete modals (New Task/Project now carry the `priority` selector).
+Two adaptations worth recording:
+- **Filter bar dropped from the UI.** The old window/status/project `FilterBar` is gone — the
+  sidebar now IS the project picker, and the single-project view makes per-lane status filtering
+  moot. `BoardClient` still *receives* the `filters` prop (page.tsx unchanged) so server-side
+  windowing keeps working; it's just not surfaced as controls. Revisit if window/active filtering
+  is wanted back.
+- **`failed` has no column.** The 5th status renders inside the **Done** column with a loud
+  (magenta) card border rather than getting its own column, per the 4-column Figma layout —
+  kept visible, not hidden.
+- **Live feed = recent `task_events`.** The right drawer reads the 50 most recent `task_events`
+  via the browser supabase client (RLS-scoped, same client as the realtime refetch) and
+  re-reads whenever the tasks realtime subscription fires.
 
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
