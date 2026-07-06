@@ -899,6 +899,29 @@ this design. `HeroBoardPreview`, `AboutSection`, `HowItWorks`, `AuthCta`, and th
 in the new design (or restyle + re-mount `AboutSection`) before public launch; flagged, not
 yet done.
 
+### D-BOARD-REDESIGN — Board rebuilt to the Figma operator-console design
+**Status:** 🚧 **IN PROGRESS 2026-07-06.** Rebuilding the manager board (`/board`) to match
+the Figma "Personal tasks dashboard" reference (same file the landing page + DECISIONS 4A
+draw from): a full operator-console layout — top header (wordmark, awaiting-review badge,
+`+ New` menu), collapsible left sidebar (projects + agents), a middle project view (header
+stats + Todo / Running / Needs-Review / Done columns), and a right live-feed drawer hidden
+by default (opens from the header's awaiting-review count).
+**Foundation (this branch, `feat/board-redesign-foundation`):**
+- **Migration `0014_priority_pr_agent_meta.sql`** (applied live): `tasks.priority`
+  (high|medium|low, default medium, CHECKed) + `tasks.pr_url` (nullable GitHub PR link).
+  Both nullable/defaulted — no backfill; agent-plane code keeps working.
+- **Agent role/model + avatars: OUT of scope** (dropped at user request 2026-07-06). The
+  board shows agent name + live status (from `last_seen_at`) only. The `agents.role`/`model`
+  columns were added then immediately dropped in the same session — not used.
+- **Data layer wired:** `BOARD_COLS` + `BoardTask` + agent-db `TaskRow` carry priority/pr_url;
+  `createTask`/`createProject` (+ their server actions) take a priority arg; the MCP
+  `submit_result` tool gains an optional `pr_url` (agent sets it when raising a PR — written
+  via a scoped update, atomic-adjacent to the transition).
+**Sequencing (DECISIONS D-PARALLEL echo):** foundation-first, then the genuinely-independent
+leaf components (header / modals / sidebar / project-view / live-feed) fan out into parallel
+worktrees; a final pass removes superseded code (old `BoardClient` internals + the landing
+leftovers flagged in D-LANDING-FIGMA). Full design source: the Figma file above.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed

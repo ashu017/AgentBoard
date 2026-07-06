@@ -27,6 +27,12 @@ export interface ActionResult<T = undefined> {
   data?: T;
 }
 
+/** Coerce a raw form value into a valid task/project priority (defaults medium). */
+function normalizePriority(raw: FormDataEntryValue | null): "high" | "medium" | "low" {
+  const v = String(raw ?? "");
+  return v === "high" || v === "low" ? v : "medium";
+}
+
 export async function createAgentAction(
   _prev: ActionResult<CreatedAgent> | null,
   formData: FormData
@@ -79,7 +85,8 @@ export async function createTaskAction(
     const assignee = String(formData.get("assignedAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
     const projectId = String(formData.get("projectId") ?? "");
-    await _createTask(title, assignee, description, projectId || undefined);
+    const priority = normalizePriority(formData.get("priority"));
+    await _createTask(title, assignee, description, projectId || undefined, priority);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -95,7 +102,8 @@ export async function createProjectAction(
     const title = String(formData.get("title") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    const project = await _createProject(title, leadAgentId || undefined, description);
+    const priority = normalizePriority(formData.get("priority"));
+    const project = await _createProject(title, leadAgentId || undefined, description, priority);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {

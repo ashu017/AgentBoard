@@ -105,7 +105,8 @@ export async function createTask(
   title: string,
   assignedAgentId: string,
   description?: string,
-  projectId?: string
+  projectId?: string,
+  priority: "high" | "medium" | "low" = "medium"
 ): Promise<CreatedTask> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -150,6 +151,7 @@ export async function createTask(
       title: title.trim(),
       description: description?.trim() || null,
       status: INITIAL_STATUS,
+      priority,
       created_by_user_id: session.user.id,
     })
     .select("id, title, status, assigned_agent_id")
@@ -366,7 +368,8 @@ export interface CreatedProject {
 export async function createProject(
   title: string,
   leadAgentId?: string,
-  description?: string
+  description?: string,
+  priority: "high" | "medium" | "low" = "medium"
 ): Promise<CreatedProject> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -394,6 +397,7 @@ export async function createProject(
       title: title.trim(),
       description: description?.trim() || null,
       status: INITIAL_STATUS,
+      priority,
       created_by_user_id: session.user.id,
     })
     .select("id, title, status, assigned_agent_id")
