@@ -52,13 +52,11 @@ export function Header({
           </button>
         )}
         <NewMenu onProject={onNewProject} onTask={onNewTask} onAgent={onNewAgent} />
-        <nav className="mono flex items-center gap-3 text-[11px] uppercase tracking-widest text-ink-soft" aria-label="Console">
-          <span className="text-ink">Board</span>
-          <Link href="/board/agents" className="hover:text-orange">Agents</Link>
-          <form action={signOut}>
-            <button className="uppercase text-ink-soft hover:text-ink">Sign out</button>
-          </form>
-        </nav>
+        <form action={signOut}>
+          <button className="mono text-[11px] uppercase tracking-widest text-ink-soft hover:text-ink">
+            Sign out
+          </button>
+        </form>
       </div>
     </header>
   );

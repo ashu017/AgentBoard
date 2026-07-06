@@ -278,7 +278,7 @@ export function BoardClient({
 
       {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAddAgent(false)} />}
 
-      <Modal open={showNew} onClose={() => setShowNew(false)} title={noAgents ? "No agents on duty" : "New task"} systemTag={noAgents ? "SYS:: NOBODY HOME" : "SYS:: ASSIGN"} blurBackdrop size="lg">
+      <Modal open={showNew} onClose={() => setShowNew(false)} title={noAgents ? "No agents on duty" : "New task"} systemTag={noAgents ? "SYS:: NOBODY HOME" : "SYS:: ASSIGN"} variant="figma" size="lg">
         {noAgents ? (
           <div>
             <p className="text-sm text-ink">
@@ -302,23 +302,23 @@ export function BoardClient({
         )}
       </Modal>
 
-      <Modal open={showNewProject} onClose={() => setShowNewProject(false)} title="New project" systemTag="SYS:: NEW PROJECT" blurBackdrop size="lg">
+      <Modal open={showNewProject} onClose={() => setShowNewProject(false)} title="New project" systemTag="SYS:: NEW PROJECT" variant="figma" size="lg">
         <NewProjectPanel agents={agents} onDone={() => setShowNewProject(false)} />
       </Modal>
 
-      <Modal open={Boolean(editTask)} onClose={() => setEditTask(null)} title="Edit task" systemTag="SYS:: EDIT TASK" blurBackdrop size="lg">
+      <Modal open={Boolean(editTask)} onClose={() => setEditTask(null)} title="Edit task" systemTag="SYS:: EDIT TASK" variant="figma" size="lg">
         {editTask && <EditTaskPanel task={editTask} onDone={() => setEditTask(null)} />}
       </Modal>
 
-      <Modal open={Boolean(editProject)} onClose={() => setEditProject(null)} title="Edit project" systemTag="SYS:: EDIT PROJECT" blurBackdrop size="lg">
+      <Modal open={Boolean(editProject)} onClose={() => setEditProject(null)} title="Edit project" systemTag="SYS:: EDIT PROJECT" variant="figma" size="lg">
         {editProject && <EditProjectPanel project={editProject} agents={agents} onDone={() => setEditProject(null)} />}
       </Modal>
 
-      <Modal open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(null)} title={confirmDelete?.kind === "project" ? "Delete project?" : "Delete task?"} systemTag="SYS:: CONFIRM DELETE" blurBackdrop>
+      <Modal open={Boolean(confirmDelete)} onClose={() => setConfirmDelete(null)} title={confirmDelete?.kind === "project" ? "Delete project?" : "Delete task?"} systemTag="SYS:: CONFIRM DELETE" variant="figma">
         {confirmDelete && <DeleteConfirmPanel item={confirmDelete} onDone={() => setConfirmDelete(null)} />}
       </Modal>
 
-      <Modal open={Boolean(reviewTask)} onClose={() => setReviewTask(null)} title="Review request" systemTag="SYS:: REVIEW REQUEST" blurBackdrop size="lg">
+      <Modal open={Boolean(reviewTask)} onClose={() => setReviewTask(null)} title="Review request" systemTag="SYS:: REVIEW REQUEST" variant="figma" size="lg">
         {reviewTask && <ReviewModalPanel task={reviewTask} onDone={() => setReviewTask(null)} />}
       </Modal>
     </div>

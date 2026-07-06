@@ -74,51 +74,57 @@ export function ProjectView({
 
   return (
     <div className="min-w-0 flex-1 overflow-y-auto p-5">
-      {/* Project header */}
+      {/* Project header — title/priority/status on the left, stats block on the
+          right (Figma layout), with the edit/add controls trailing the stats. */}
       <section className="enter-fade">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: statusColor(project.status) }} />
-          <h1 className="display text-xl uppercase tracking-wide">{project.title}</h1>
-          <span
-            className="mono border px-2 py-0.5 text-[10px] uppercase tracking-widest"
-            style={{ borderColor: PRIORITY_COLORS[project.priority], color: PRIORITY_COLORS[project.priority] }}
-          >
-            {project.priority}
-          </span>
-          <span className="mono text-[10px] uppercase tracking-widest text-ink-soft">
-            {STATUS_UI[project.status].label}
-          </span>
-
-          <div className="ml-auto flex items-center gap-2">
-            {!projectTerminal && (
-              <button onClick={onAddTask} className="mono border border-line px-2.5 py-1 text-[11px] uppercase tracking-widest hover:text-orange">
-                + task
-              </button>
-            )}
-            {editable && (
-              <>
-                <button onClick={onEditProject} aria-label={`Edit project ${project.title}`} title="Edit project" className="text-ink-soft hover:text-orange">
-                  <EditIcon />
-                </button>
-                <button onClick={onDeleteProject} aria-label={`Delete project ${project.title}`} title="Delete project" className="text-ink-soft hover:text-magenta">
-                  <TrashIcon />
-                </button>
-              </>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          {/* Left: identity */}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: statusColor(project.status) }} />
+              <h1 className="display text-xl uppercase tracking-wide">{project.title}</h1>
+              <span
+                className="mono border px-2 py-0.5 text-[10px] uppercase tracking-widest"
+                style={{ borderColor: PRIORITY_COLORS[project.priority], color: PRIORITY_COLORS[project.priority] }}
+              >
+                {project.priority}
+              </span>
+              <span className="mono text-[10px] uppercase tracking-widest text-ink-soft">
+                {STATUS_UI[project.status].label}
+              </span>
+            </div>
+            {project.description && (
+              <p className="mt-2 max-w-2xl text-sm text-ink-soft">{project.description}</p>
             )}
           </div>
-        </div>
 
-        {/* Stats row */}
-        <div className="mono mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
-          <Stat label="tasks" value={total} />
-          <Stat label="done" value={done} />
-          <Stat label="in review" value={inReview} />
-          <Stat label="PRs raised" value={prsRaised} />
+          {/* Right: stats block + controls */}
+          <div className="flex shrink-0 items-center gap-5">
+            <div className="flex items-center gap-5">
+              <Stat label="tasks" value={total} />
+              <Stat label="done" value={done} />
+              <Stat label="in review" value={inReview} alert={inReview > 0} />
+              <Stat label="PRs raised" value={prsRaised} />
+            </div>
+            <div className="flex items-center gap-2">
+              {!projectTerminal && (
+                <button onClick={onAddTask} className="mono border border-line px-2.5 py-1 text-[11px] uppercase tracking-widest hover:text-orange">
+                  + task
+                </button>
+              )}
+              {editable && (
+                <>
+                  <button onClick={onEditProject} aria-label={`Edit project ${project.title}`} title="Edit project" className="text-ink-soft hover:text-orange">
+                    <EditIcon />
+                  </button>
+                  <button onClick={onDeleteProject} aria-label={`Delete project ${project.title}`} title="Delete project" className="text-ink-soft hover:text-magenta">
+                    <TrashIcon />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-
-        {project.description && (
-          <p className="mt-2 max-w-2xl text-sm text-ink-soft">{project.description}</p>
-        )}
 
         {/* Completion bar */}
         <div className="mono mt-3 flex max-w-md items-center gap-2 text-[10px] text-ink-soft">
@@ -194,12 +200,22 @@ export function ProjectView({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
   return (
-    <span className="flex items-baseline gap-1">
-      <span className="text-sm font-semibold text-ink">{value}</span>
-      <span className="uppercase tracking-widest text-ink-soft">{label}</span>
-    </span>
+    <div className="text-center">
+      <div
+        className="display text-xl uppercase leading-none"
+        style={{ color: alert ? "#7c3aed" : "var(--ink)", letterSpacing: "0.04em" }}
+      >
+        {value}
+      </div>
+      <div
+        className="mono mt-1 text-[9px] uppercase tracking-widest"
+        style={{ color: alert ? "#7c3aed" : "var(--ink-soft)" }}
+      >
+        {label}
+      </div>
+    </div>
   );
 }
 
