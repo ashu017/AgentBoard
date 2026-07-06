@@ -44,6 +44,33 @@ export async function createAgent(name: string, description?: string): Promise<C
   return { id: data.id, name: data.name, prefix: key.prefix, token: key.token };
 }
 
+/**
+ * Edit an agent's display fields (name + description). Runs under the user's RLS
+ * session, so the update only matches an agent in the caller's workspace (a
+ * foreign id updates nothing). Does not touch the key or revoked state.
+ */
+export async function updateAgent(
+  agentId: string,
+  name: string,
+  description?: string
+): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!agentId) throw new Error("An agent id is required");
+  if (!name.trim()) throw new Error("Agent name is required");
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("agents")
+    .update({ name: name.trim(), description: description?.trim() || null })
+    .eq("id", agentId)
+    .eq("workspace_id", session.workspace.id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`update agent failed: ${error.message}`);
+  if (!data) throw new Error("Agent not found in your workspace");
+}
+
 /** Revoke an agent's key (sets revoked_at). The agent's next MCP call → 401. */
 export async function revokeAgent(agentId: string): Promise<void> {
   const session = await getSession();

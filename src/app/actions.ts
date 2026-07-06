@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import {
   createAgent as _createAgent,
+  updateAgent as _updateAgent,
   revokeAgent as _revokeAgent,
   deleteAgent as _deleteAgent,
   createTask as _createTask,
@@ -46,6 +47,23 @@ export async function createAgentAction(
     return { ok: true, data: agent };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create agent" };
+  }
+}
+
+export async function updateAgentAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const agentId = String(formData.get("agentId") ?? "");
+    const name = String(formData.get("name") ?? "");
+    const description = String(formData.get("description") ?? "");
+    await _updateAgent(agentId, name, description);
+    revalidatePath("/board/agents");
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update agent" };
   }
 }
 

@@ -20,6 +20,7 @@ export function Sidebar({
   tasks,
   activeProjectId,
   onSelectProject,
+  onSelectAgent,
   onHide,
 }: {
   projects: ProjectSummary[];
@@ -27,6 +28,7 @@ export function Sidebar({
   tasks: BoardTask[];
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
+  onSelectAgent: (agent: AgentRow) => void;
   onHide: () => void;
 }) {
   const [projectsOpen, setProjectsOpen] = useState(true);
@@ -100,13 +102,18 @@ export function Sidebar({
           {activeAgents.map((a) => {
             const st = AGENT_STATUS_UI[agentLiveStatus(a, tasks)];
             return (
-              <div key={a.id} className="flex items-center gap-2 px-3 py-1.5">
+              <button
+                key={a.id}
+                onClick={() => onSelectAgent(a)}
+                title={`Manage ${a.name}`}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-paper"
+              >
                 <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: st.color }} />
                 <span className="truncate text-[13px]">{a.name}</span>
                 <span className="mono ml-auto shrink-0 text-[9px] uppercase tracking-widest" style={{ color: st.color }}>
                   {st.label}
                 </span>
-              </div>
+              </button>
             );
           })}
         </Section>

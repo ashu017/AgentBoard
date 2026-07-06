@@ -19,6 +19,7 @@ import { Modal } from "@/app/_components/Modal";
 import { AddAgentFlow } from "@/app/_components/AddAgentFlow";
 import { Header } from "./_components/Header";
 import { Sidebar, SidebarReveal, type ProjectSummary } from "./_components/Sidebar";
+import { AgentModal } from "./_components/AgentModal";
 import { ProjectView } from "./_components/ProjectView";
 import { LiveFeed } from "./_components/LiveFeed";
 
@@ -64,6 +65,8 @@ export function BoardClient({
   const [dragging, setDragging] = useState<BoardTask | null>(null);
   const [moveError, setMoveError] = useState("");
   const [reviewTask, setReviewTask] = useState<BoardTask | null>(null);
+  // Agent clicked in the sidebar → opens the manage (edit/revoke/delete) modal.
+  const [selectedAgent, setSelectedAgent] = useState<AgentRow | null>(null);
 
   // Layout state (redesign): the active project, sidebar visibility, live feed.
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -231,6 +234,7 @@ export function BoardClient({
             tasks={tasks}
             activeProjectId={activeProjectId}
             onSelectProject={setActiveProjectId}
+            onSelectAgent={setSelectedAgent}
             onHide={() => setSidebarHidden(true)}
           />
         )}
@@ -277,6 +281,9 @@ export function BoardClient({
       </div>
 
       {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAddAgent(false)} />}
+
+      {/* Manage an agent clicked in the sidebar — edit / revoke / delete. */}
+      <AgentModal agent={selectedAgent} onClose={() => setSelectedAgent(null)} />
 
       <Modal open={showNew} onClose={() => setShowNew(false)} title={noAgents ? "No agents on duty" : "New task"} systemTag={noAgents ? "SYS:: NOBODY HOME" : "SYS:: ASSIGN"} variant="figma" size="lg">
         {noAgents ? (
