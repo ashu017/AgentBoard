@@ -899,6 +899,49 @@ this design. `HeroBoardPreview`, `AboutSection`, `HowItWorks`, `AuthCta`, and th
 in the new design (or restyle + re-mount `AboutSection`) before public launch; flagged, not
 yet done.
 
+### D-BOARD-REDESIGN — Board rebuilt to the Figma operator-console design
+**Status:** 🚧 **IN PROGRESS 2026-07-06.** Rebuilding the manager board (`/board`) to match
+the Figma "Personal tasks dashboard" reference (same file the landing page + DECISIONS 4A
+draw from): a full operator-console layout — top header (wordmark, awaiting-review badge,
+`+ New` menu), collapsible left sidebar (projects + agents), a middle project view (header
+stats + Todo / Running / Needs-Review / Done columns), and a right live-feed drawer hidden
+by default (opens from the header's awaiting-review count).
+**Foundation (this branch, `feat/board-redesign-foundation`):**
+- **Migration `0014_priority_pr_agent_meta.sql`** (applied live): `tasks.priority`
+  (high|medium|low, default medium, CHECKed) + `tasks.pr_url` (nullable GitHub PR link).
+  Both nullable/defaulted — no backfill; agent-plane code keeps working.
+- **Agent role/model + avatars: OUT of scope** (dropped at user request 2026-07-06). The
+  board shows agent name + live status (from `last_seen_at`) only. The `agents.role`/`model`
+  columns were added then immediately dropped in the same session — not used.
+- **Data layer wired:** `BOARD_COLS` + `BoardTask` + agent-db `TaskRow` carry priority/pr_url;
+  `createTask`/`createProject` (+ their server actions) take a priority arg; the MCP
+  `submit_result` tool gains an optional `pr_url` (agent sets it when raising a PR — written
+  via a scoped update, atomic-adjacent to the transition).
+**Sequencing (DECISIONS D-PARALLEL echo):** foundation-first, then the genuinely-independent
+leaf components (header / modals / sidebar / project-view / live-feed) fan out into parallel
+worktrees; a final pass removes superseded code (old `BoardClient` internals + the landing
+leftovers flagged in D-LANDING-FIGMA). Full design source: the Figma file above.
+**Landed (2026-07-06, `feat/board-redesign-foundation`):** `BoardClient` rewritten from the
+swimlane layout to the single-project layout; sections extracted to
+`src/app/board/_components/` (`Header`, `Sidebar`, `ProjectView`, `LiveFeed`, `board-ui`
+helpers). `page.tsx` + `BoardClient` props unchanged — the board still loads ALL projects+tasks;
+the sidebar lists every project and the middle shows the one selected (default: first
+non-Miscellaneous, else first). Preserved verbatim: the D9-RT realtime `setAuth`+refetch,
+the dataTransfer drag-drop (no async-state race), the inline yes/no + option-modal review loop,
+and all New/Edit/Delete modals (New Task/Project now carry the `priority` selector).
+Two adaptations worth recording:
+- **Filter bar dropped from the UI.** The old window/status/project `FilterBar` is gone — the
+  sidebar now IS the project picker, and the single-project view makes per-lane status filtering
+  moot. `BoardClient` still *receives* the `filters` prop (page.tsx unchanged) so server-side
+  windowing keeps working; it's just not surfaced as controls. Revisit if window/active filtering
+  is wanted back.
+- **`failed` has no column.** The 5th status renders inside the **Done** column with a loud
+  (magenta) card border rather than getting its own column, per the 4-column Figma layout —
+  kept visible, not hidden.
+- **Live feed = recent `task_events`.** The right drawer reads the 50 most recent `task_events`
+  via the browser supabase client (RLS-scoped, same client as the realtime refetch) and
+  re-reads whenever the tasks realtime subscription fires.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed

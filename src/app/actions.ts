@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import {
   createAgent as _createAgent,
+  updateAgent as _updateAgent,
   revokeAgent as _revokeAgent,
   deleteAgent as _deleteAgent,
   createTask as _createTask,
@@ -27,6 +28,12 @@ export interface ActionResult<T = undefined> {
   data?: T;
 }
 
+/** Coerce a raw form value into a valid task/project priority (defaults medium). */
+function normalizePriority(raw: FormDataEntryValue | null): "high" | "medium" | "low" {
+  const v = String(raw ?? "");
+  return v === "high" || v === "low" ? v : "medium";
+}
+
 export async function createAgentAction(
   _prev: ActionResult<CreatedAgent> | null,
   formData: FormData
@@ -40,6 +47,23 @@ export async function createAgentAction(
     return { ok: true, data: agent };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create agent" };
+  }
+}
+
+export async function updateAgentAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const agentId = String(formData.get("agentId") ?? "");
+    const name = String(formData.get("name") ?? "");
+    const description = String(formData.get("description") ?? "");
+    await _updateAgent(agentId, name, description);
+    revalidatePath("/board/agents");
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update agent" };
   }
 }
 
@@ -79,7 +103,8 @@ export async function createTaskAction(
     const assignee = String(formData.get("assignedAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
     const projectId = String(formData.get("projectId") ?? "");
-    await _createTask(title, assignee, description, projectId || undefined);
+    const priority = normalizePriority(formData.get("priority"));
+    await _createTask(title, assignee, description, projectId || undefined, priority);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -95,7 +120,8 @@ export async function createProjectAction(
     const title = String(formData.get("title") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    const project = await _createProject(title, leadAgentId || undefined, description);
+    const priority = normalizePriority(formData.get("priority"));
+    const project = await _createProject(title, leadAgentId || undefined, description, priority);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {

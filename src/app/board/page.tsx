@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { listBoardTasks, listAgents, listProjects, parseFilters } from "@/lib/manager-queries";
-import { Shell } from "@/app/_components/Shell";
 import { BoardClient } from "./BoardClient";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +13,9 @@ export default async function BoardPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const filters = parseFilters(await searchParams);
+  // The redesigned single-project board has a dedicated Done column, so it needs
+  // done/failed tasks too — force status="all" (the time window still caps volume).
+  const filters = { ...parseFilters(await searchParams), status: "all" as const };
   const [{ tasks, capped }, agents, projects] = await Promise.all([
     listBoardTasks(filters),
     listAgents(),
@@ -24,15 +25,14 @@ export default async function BoardPage({
   const mcpEndpoint = `${origin}/api/mcp`;
 
   return (
-    <Shell active="board" workspaceName={session.workspace.name}>
-      <BoardClient
-        initialTasks={tasks}
-        agents={agents}
-        projects={projects}
-        capped={capped}
-        mcpEndpoint={mcpEndpoint}
-        filters={filters}
-      />
-    </Shell>
+    <BoardClient
+      initialTasks={tasks}
+      agents={agents}
+      projects={projects}
+      capped={capped}
+      mcpEndpoint={mcpEndpoint}
+      workspaceName={session.workspace.name}
+      filters={filters}
+    />
   );
 }

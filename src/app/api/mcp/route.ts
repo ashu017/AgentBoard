@@ -48,7 +48,7 @@ Keep your assigned tasks up to date as you work — your manager is watching the
 - When you START a task, move it to in_progress (update_task_status).
 - Whenever you're assigned a PROJECT (a top-level task, kind 'project'), your FIRST step is to break it into concrete tasks with create_subtask — do this before starting the work, every time, so your manager sees the plan on the board. Create one subtask per meaningful unit of work; call list_agents first if you want to delegate a subtask to another agent (otherwise it's assigned to you). Only after the tasks exist do you start working them. Read the project's progress any time with list_my_tasks(parent_task_id=<project id>), including tasks you delegated.
 - Tasks that don't depend on each other can be worked in PARALLEL — move each to in_progress when you actually start it and update each one independently, so the board reflects everything in flight at once. How you parallelize (internal subagents, worktrees, separate threads) is up to your runtime; AgentBoard only needs each task's status kept current.
-- When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work).
+- When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work). If your work opened a pull request, pass its URL as pr_url so it shows on the review card.
 - If you need a human decision before continuing, call request_review with a clear reason (and options if there are choices to pick between). Keep polling list_my_tasks: when the task leaves in_review you'll see the verdict (approved & continue → resume with the chosen option/note; approved & closed → the human marked it done; rejected → stop). Once you've raised a review you cannot mark the task done yourself — a human closes it.
 Update promptly and honestly — a stale or wrong status misleads the person relying on this board.`;
 
@@ -159,17 +159,18 @@ const baseHandler = createMcpHandler(
 
     server.tool(
       "submit_result",
-      "Submit a result for an in-progress task; optionally also move it to a terminal status (done/failed).",
+      "Submit a result for an in-progress task; optionally also move it to a terminal status (done/failed). If you raised a pull request, pass its URL as pr_url so it shows on the Needs-Review card.",
       {
         task_id: z.string().min(1).describe("The task id (must be assigned to you)"),
         output: z.string().describe("The result payload (max 256 KB)"),
         status: STATUS_ENUM.optional().describe("Optional terminal status to set (done/failed)"),
+        pr_url: z.string().url().optional().describe("Optional GitHub pull-request URL to surface on the task's review card"),
       },
-      async ({ task_id, output, status }, extra) => {
+      async ({ task_id, output, status, pr_url }, extra) => {
         try {
           const ctx = ctxFrom(extra);
           await touchLastSeen(ctx);
-          const task = await submitResult(ctx, task_id, output, status);
+          const task = await submitResult(ctx, task_id, output, status, pr_url);
           return ok({ task });
         } catch (err) {
           return toolError(err);

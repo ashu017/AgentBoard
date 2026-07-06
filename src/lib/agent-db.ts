@@ -52,6 +52,8 @@ export interface TaskRow {
   title: string;
   description: string | null;
   status: TaskStatus;
+  priority: "high" | "medium" | "low";
+  pr_url: string | null;
   result: string | null;
   review_reason: string | null;
   review_options: unknown | null;
@@ -264,15 +266,32 @@ export async function submitResult(
   ctx: AgentContext,
   taskId: string,
   output: string,
-  status?: string
+  status?: string,
+  prUrl?: string
 ): Promise<TaskRow> {
   if (typeof output !== "string") throw badInput("output must be a string");
   if (Buffer.byteLength(output, "utf8") > MAX_RESULT_BYTES) throw tooLarge();
+  if (prUrl !== undefined && typeof prUrl !== "string") throw badInput("pr_url must be a string");
 
   const task = await getScopedTask(ctx, taskId);
   if (task.status !== "in_progress") {
     // An agent submitting a result implies it started work (D-SUBMIT).
     throw illegalTransition("submit_result is only valid on an in_progress task");
+  }
+
+  // Attach the PR link if given. getScopedTask above already confirmed the task
+  // is in the agent's scope (foreign/absent → 404); this update repeats the same
+  // (workspace_id, assigned_agent_id, id) filter so it can only touch that row.
+  // Written before the transition so the link is present the moment a
+  // Needs-Review card renders (0014, D-BOARD-REDESIGN).
+  if (prUrl) {
+    const { error: prErr } = await db()
+      .from("tasks")
+      .update({ pr_url: prUrl })
+      .eq("workspace_id", ctx.workspaceId)
+      .eq("assigned_agent_id", ctx.agentId)
+      .eq("id", taskId);
+    if (prErr) throw badInput(prErr.message);
   }
 
   if (status !== undefined) {
