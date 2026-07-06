@@ -42,7 +42,6 @@ export async function createAgentAction(
     const name = String(formData.get("name") ?? "");
     const description = String(formData.get("description") ?? "");
     const agent = await _createAgent(name, description);
-    revalidatePath("/board/agents");
     revalidatePath("/board"); // board's assignee list + no-agents state depend on this
     return { ok: true, data: agent };
   } catch (e) {
@@ -59,7 +58,6 @@ export async function updateAgentAction(
     const name = String(formData.get("name") ?? "");
     const description = String(formData.get("description") ?? "");
     await _updateAgent(agentId, name, description);
-    revalidatePath("/board/agents");
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -73,7 +71,7 @@ export async function revokeAgentAction(
 ): Promise<ActionResult> {
   try {
     await _revokeAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/board/agents");
+    revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to revoke" };
@@ -86,7 +84,6 @@ export async function deleteAgentAction(
 ): Promise<ActionResult> {
   try {
     await _deleteAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/board/agents");
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {

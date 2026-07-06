@@ -941,6 +941,12 @@ Two adaptations worth recording:
 - **Live feed = recent `task_events`.** The right drawer reads the 50 most recent `task_events`
   via the browser supabase client (RLS-scoped, same client as the realtime refetch) and
   re-reads whenever the tasks realtime subscription fires.
+**Standalone `/board/agents` page retired (2026-07-06).** Agent management now lives entirely
+in the board — create via `+ New → Agent`, and manage (edit / revoke / delete) by clicking an
+agent in the sidebar to open `AgentModal`. The dropped header nav had already orphaned the
+page (no in-UI link); deleting it removed `board/agents/{page,AgentsClient}.tsx` and, with it,
+the now-unused `Shell` + `GlassNav` (the board's `Header` replaced Shell's chrome). Agent
+server actions revalidate `/board` only (was `/board/agents`). Sole human route is now `/board`.
 
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
