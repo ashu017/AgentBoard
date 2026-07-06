@@ -20,25 +20,28 @@ function StepCard({ step, index }: { step: (typeof steps)[number]; index: number
       initial={{ opacity: 0, y: 24 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
       transition={{ duration: 0.45, delay: index * 0.1 }}
-      className="relative p-5"
+      className="relative flex flex-col p-6 sm:aspect-square lg:p-8"
       style={{
         background: "#fff",
         borderTop: `2px solid ${step.color}`,
         borderLeft: "1px solid rgba(200,80,0,0.1)",
         borderRight: "1px solid rgba(200,80,0,0.1)",
         borderBottom: "1px solid rgba(200,80,0,0.1)",
-        clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%)",
+        clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)",
       }}
     >
       {/* Step number: bolder than a faint ghost so the sequence reads at a glance,
           but still lighter than the heading (it's an ordinal, not the message). */}
-      <div className="display mb-3 text-4xl uppercase" style={{ color: step.color, opacity: 0.85, letterSpacing: "0.06em" }}>
+      <div className="display text-5xl uppercase lg:text-6xl" style={{ color: step.color, opacity: 0.85, letterSpacing: "0.06em" }}>
         {step.num}
       </div>
-      <h3 className="display mb-2 text-sm uppercase tracking-widest text-ink">{step.title}</h3>
-      <p className="mono text-xs leading-relaxed" style={{ color: "rgba(28,24,20,0.5)" }}>
-        {step.desc}
-      </p>
+      {/* Title + description pinned to the bottom of the square tile. */}
+      <div className="mt-auto pt-6">
+        <h3 className="display mb-2 text-base uppercase tracking-widest text-ink">{step.title}</h3>
+        <p className="mono text-xs leading-relaxed lg:text-sm" style={{ color: "rgba(28,24,20,0.5)" }}>
+          {step.desc}
+        </p>
+      </div>
     </motion.div>
   );
 }
@@ -49,14 +52,15 @@ export function HowItWorks() {
       id="how-it-works"
       className="flex flex-col justify-center px-6 py-16 lg:min-h-screen lg:px-10 lg:py-24"
     >
-      <div className="mx-auto w-full max-w-7xl">
-        <div className="mb-10">
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="mb-8">
           <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::WORKFLOW</p>
           <h2 className="display uppercase text-ink" style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}>
             FOUR STEPS TO AUTONOMOUS WORK.
           </h2>
         </div>
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+        {/* 2×2 square tiles. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {steps.map((s, i) => (
             <StepCard key={s.num} step={s} index={i} />
           ))}
