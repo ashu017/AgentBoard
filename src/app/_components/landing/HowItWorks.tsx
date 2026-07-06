@@ -45,17 +45,22 @@ function StepCard({ step, index }: { step: (typeof steps)[number]; index: number
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="mx-auto max-w-7xl px-6 py-16 lg:px-10">
-      <div className="mb-10">
-        <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::WORKFLOW</p>
-        <h2 className="display uppercase text-ink" style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}>
-          FOUR STEPS TO AUTONOMOUS WORK.
-        </h2>
-      </div>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-        {steps.map((s, i) => (
-          <StepCard key={s.num} step={s} index={i} />
-        ))}
+    <section
+      id="how-it-works"
+      className="flex flex-col justify-center px-6 py-16 lg:min-h-screen lg:px-10 lg:py-24"
+    >
+      <div className="mx-auto w-full max-w-7xl">
+        <div className="mb-10">
+          <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::WORKFLOW</p>
+          <h2 className="display uppercase text-ink" style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}>
+            FOUR STEPS TO AUTONOMOUS WORK.
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+          {steps.map((s, i) => (
+            <StepCard key={s.num} step={s} index={i} />
+          ))}
+        </div>
       </div>
     </section>
   );

@@ -108,41 +108,48 @@ export default function LandingPage() {
       <LandingView />
 
       {/* SEO-critical, content-heavy sections stay server-rendered here so they're
-          in the static HTML. Restyled to the terminal aesthetic. */}
-      <main className="mx-auto w-full max-w-7xl px-6 lg:px-10">
+          in the static HTML. Restyled to the terminal aesthetic. Each fills the
+          viewport on desktop (lg:min-h-screen, content vertically centered);
+          natural height on mobile so short sections don't leave big gaps. */}
+      <main>
         {/* ── FAQ (AEO / FAQPage) ────────────────────────────────────────── */}
         <section
           id="faq"
           aria-labelledby="faq-heading"
-          className="py-16"
+          className="flex flex-col justify-center px-6 py-16 lg:min-h-screen lg:px-10 lg:py-24"
           style={{ borderTop: "1px solid rgba(200,80,0,0.1)" }}
         >
-          <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::FAQ</p>
-          <h2
-            id="faq-heading"
-            className="display mb-8 uppercase text-ink"
-            style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}
-          >
-            Frequently asked questions
-          </h2>
-          <div className="mx-auto max-w-3xl divide-y" style={{ borderColor: "rgba(200,80,0,0.12)" }}>
-            {FAQ.map((item) => (
-              <details key={item.q} className="group py-4">
-                <summary className="mono flex cursor-pointer items-center justify-between gap-4 text-sm font-bold uppercase tracking-wide text-ink marker:content-['']">
-                  {item.q}
-                  <span aria-hidden="true" className="mono text-orange transition-transform group-open:rotate-45">
-                    +
-                  </span>
-                </summary>
-                <p className="mono mt-2 text-sm leading-relaxed text-ink-soft">{item.a}</p>
-              </details>
-            ))}
+          <div className="mx-auto w-full max-w-7xl">
+            <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::FAQ</p>
+            <h2
+              id="faq-heading"
+              className="display mb-8 uppercase text-ink"
+              style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}
+            >
+              Frequently asked questions
+            </h2>
+            <div className="mx-auto max-w-3xl divide-y" style={{ borderColor: "rgba(200,80,0,0.12)" }}>
+              {FAQ.map((item) => (
+                <details key={item.q} className="group py-4">
+                  <summary className="mono flex cursor-pointer items-center justify-between gap-4 text-sm font-bold uppercase tracking-wide text-ink marker:content-['']">
+                    {item.q}
+                    <span aria-hidden="true" className="mono text-orange transition-transform group-open:rotate-45">
+                      +
+                    </span>
+                  </summary>
+                  <p className="mono mt-2 text-sm leading-relaxed text-ink-soft">{item.a}</p>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
       </main>
 
       {/* ── FINAL CTA ──────────────────────────────── */}
-      <section className="px-6 py-20 lg:px-10" style={{ borderTop: "1px solid rgba(200,80,0,0.14)" }}>
+      <section
+        className="flex flex-col justify-center px-6 py-20 lg:min-h-screen lg:px-10"
+        style={{ borderTop: "1px solid rgba(200,80,0,0.14)" }}
+      >
         <div
           className="mx-auto max-w-2xl p-10 text-center"
           style={{

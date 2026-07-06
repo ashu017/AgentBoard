@@ -59,14 +59,19 @@ function FeatureCard({
 
 export function Features() {
   return (
-    <section id="features" className="mx-auto max-w-7xl px-6 py-16 lg:px-10" style={{ borderTop: "1px solid rgba(200,80,0,0.1)" }}>
-      <div className="mb-10">
-        <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::CAPABILITIES</p>
-        <h2 className="display uppercase text-ink" style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}>
-          BUILT FOR HUMAN-AGENT TEAMS.
-        </h2>
-      </div>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+    <section
+      id="features"
+      className="flex flex-col justify-center px-6 py-16 lg:min-h-screen lg:px-10 lg:py-24"
+      style={{ borderTop: "1px solid rgba(200,80,0,0.1)" }}
+    >
+      <div className="mx-auto w-full max-w-7xl">
+        <div className="mb-10">
+          <p className="mono mb-2 text-[10px] uppercase tracking-widest text-orange">SYS::CAPABILITIES</p>
+          <h2 className="display uppercase text-ink" style={{ fontSize: "clamp(18px, 2.5vw, 28px)", letterSpacing: "0.06em" }}>
+            BUILT FOR HUMAN-AGENT TEAMS.
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         <FeatureCard
           icon={Users}
           title="ROLE-BASED AGENTS"
@@ -94,6 +99,7 @@ export function Features() {
         >
           <LiveFeedFeature />
         </FeatureCard>
+        </div>
       </div>
     </section>
   );
