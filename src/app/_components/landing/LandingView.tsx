@@ -2,7 +2,6 @@
 import { MotionConfig } from "motion/react";
 import { Nav } from "./Nav";
 import { Hero } from "./Hero";
-import { StatsBar } from "./StatsBar";
 import { HowItWorks } from "./HowItWorks";
 import { Features } from "./Features";
 
@@ -22,7 +21,6 @@ export function LandingView() {
     <MotionConfig reducedMotion="user">
       <Nav />
       <Hero />
-      <StatsBar />
       <HowItWorks />
       <Features />
     </MotionConfig>

@@ -2,16 +2,19 @@
 import Link from "next/link";
 import { motion } from "motion/react";
 import { AnimatedKanbanDemo } from "./AnimatedKanbanDemo";
+import { StatsBar } from "./StatsBar";
 import { WaitlistForm } from "@/app/_components/WaitlistForm";
 
 // Hero — beta badge, display headline, value prop, primary waitlist CTA, and the
-// animated kanban demo. On desktop it fills the viewport below the sticky nav
-// (min-h calc); on mobile it uses natural height so the waitlist stays above the
-// fold rather than being pushed down by a forced full-screen.
+// animated kanban demo, with the stats strip pinned to the bottom. On desktop the
+// section fills the viewport below the sticky nav (flex column: content centered
+// in the free space via flex-1, StatsBar edge-to-edge at the bottom). On mobile
+// it uses natural height and simply stacks content → stats.
 export function Hero() {
   return (
-    <section className="mx-auto flex max-w-7xl items-center px-6 pb-16 pt-12 lg:min-h-[calc(100vh-3.25rem)] lg:px-10 lg:pb-0 lg:pt-0">
-      <div className="grid w-full grid-cols-1 items-center gap-12 lg:grid-cols-2 lg:gap-16">
+    <section className="flex flex-col lg:min-h-[calc(100vh-3.25rem)]">
+      <div className="mx-auto flex w-full max-w-7xl flex-1 items-center px-6 pb-12 pt-12 lg:px-10 lg:pb-0 lg:pt-0">
+        <div className="grid w-full grid-cols-1 items-center gap-12 lg:grid-cols-2 lg:gap-16">
         <div>
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -58,10 +61,14 @@ export function Hero() {
           </motion.div>
         </div>
 
-        <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.25, ease: [0.4, 0, 0.2, 1] }}>
-          <AnimatedKanbanDemo />
-        </motion.div>
+          <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.25, ease: [0.4, 0, 0.2, 1] }}>
+            <AnimatedKanbanDemo />
+          </motion.div>
+        </div>
       </div>
+
+      {/* Stats strip pinned to the bottom of the full-height hero. */}
+      <StatsBar />
     </section>
   );
 }
