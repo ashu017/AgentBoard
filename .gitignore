@@ -30,3 +30,8 @@ npm-debug.log*
 tsconfig.tsbuildinfo
 *.tsbuildinfo
 .gstack/
+
+# Local Claude Code worktrees + settings (not part of the app; agents/skills ARE tracked)
+.claude/worktrees/
+.claude/settings.local.json
+.superpowers/
