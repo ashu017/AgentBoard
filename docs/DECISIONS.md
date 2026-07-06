@@ -869,6 +869,36 @@ captcha friction. No admin UI in v1 (YAGNI — read the count in the dashboard).
 **Why not a server action + service-role:** would force a dynamic boundary on the static
 marketing page for no security gain; insert-only RLS already makes a client-side write safe.
 
+### D-LANDING-FIGMA — Landing page rebuilt to the Figma operator-console design
+**Status:** ✅ **BUILT 2026-07-06.** Rebuilt the landing page to match the Figma Make
+reference (`figma.com/make/9DyXcOrZRgAlDQvODiot2K`, the same "Personal tasks dashboard" that
+DECISIONS 4A already models the app on). Heavier terminal aesthetic than the prior page:
+uppercase, orange-tinted grid, clip-corner cards, `motion/react` scroll/loop animations.
+**Sections:** sticky nav → hero (beta badge, "YOUR AI AGENTS, UNDER COMMAND", terminal
+waitlist form, animated kanban demo) → stats bar (animated counters) → 4-step how-it-works →
+3 animated feature cards (illustrative agent roster, human-in-the-loop review, live feed) →
+FAQ → final-CTA band (second waitlist) → terminal footer.
+**Fonts (app-wide):** Russo One (display) + Space Mono (body/mono) via `next/font`, replacing
+Geist as the primary brand type — `globals.css` `@theme` now maps `--font-sans`/`--font-mono`
+to Space Mono and adds `--font-display`. This changes the board/app type too (intentional —
+one brand). Geist vars retained as fallbacks.
+**Deps added:** `motion` (framer-motion) + `lucide-react` — the design's `AnimatePresence`/
+layout animations and icons; hand-rolling them in CSS would be lower fidelity.
+**Honest content (no false claims):** dropped the Figma's fabricated "1,847 teams on
+waitlist" counter and the PRICING nav link (AgentBoard is free/MIT); stats now describe real
+product shape (agent tools, MCP tools shipped, 100% open source, 0 per-seat fees); the agent
+roster is labelled illustrative, not a claimed built-in feature. `WaitlistForm` gained a
+`terminal` variant; the client-side insert + honeypot + 23505-as-success logic is unchanged.
+`/` still prerenders **static** (client `LandingView` for animations; SEO metadata + JSON-LD
++ FAQ stay server-rendered in `page.tsx`).
+**Superseded:** the 2026-07-05 hero (full-viewport split + `HeroBoardPreview`) — replaced by
+this design. `HeroBoardPreview`, `AboutSection`, `HowItWorks`, `AuthCta`, and the pixel-Pong
+`animated-hero-section` are now unimported (kept in-tree, tree-shaken out of the bundle).
+**⚠️ Open — SEO regression:** the removed `AboutSection` carried E-E-A-T "who/how/why" +
+"why not JIRA" authority copy now absent from the page. Fold that content into an About block
+in the new design (or restyle + re-mount `AboutSection`) before public launch; flagged, not
+yet done.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed

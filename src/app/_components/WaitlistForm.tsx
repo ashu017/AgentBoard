@@ -16,7 +16,15 @@ import { classifySubmission, isInsertSuccess } from "@/lib/waitlist";
 
 type Status = "idle" | "submitting" | "done" | "error";
 
-export function WaitlistForm({ source = "hero" }: { source?: string }) {
+export function WaitlistForm({
+  source = "hero",
+  variant = "default",
+}: {
+  source?: string;
+  /** "terminal" = uppercase operator-console styling (landing page, Figma look). */
+  variant?: "default" | "terminal";
+}) {
+  const terminal = variant === "terminal";
   const [email, setEmail] = useState("");
   const [honeypot, setHoneypot] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -63,7 +71,19 @@ export function WaitlistForm({ source = "hero" }: { source?: string }) {
   }
 
   if (status === "done") {
-    return (
+    return terminal ? (
+      <div
+        className="flex max-w-md items-start gap-3 px-4 py-3"
+        role="status"
+        style={{ border: "1px solid rgba(204,0,85,0.3)", borderTop: "2px solid #cc0055", background: "rgba(204,0,85,0.05)" }}
+      >
+        <span className="mono mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center bg-magenta text-[11px] text-paper">✓</span>
+        <div>
+          <p className="mono text-xs font-bold uppercase tracking-widest text-magenta">You&apos;re on the list.</p>
+          <p className="mono mt-0.5 text-xs text-ink-soft">We&apos;ll email you when early access opens.</p>
+        </div>
+      </div>
+    ) : (
       <p className="mono text-sm text-st-done" role="status">
         ● You&apos;re on the list — we&apos;ll email you when it opens.
       </p>
@@ -82,13 +102,22 @@ export function WaitlistForm({ source = "hero" }: { source?: string }) {
           name="email"
           required
           autoComplete="email"
-          placeholder="you@company.com"
+          placeholder={terminal ? "ENTER YOUR EMAIL..." : "you@company.com"}
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
             if (status === "error") setStatus("idle");
           }}
-          className="min-w-0 flex-1 border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft focus:border-orange focus:outline-none"
+          className={
+            terminal
+              ? "mono min-w-0 flex-1 bg-white/80 px-4 py-3 text-sm uppercase tracking-wide text-ink placeholder:text-ink-soft focus:outline-none"
+              : "min-w-0 flex-1 border border-line bg-paper px-3 py-2.5 text-sm text-ink placeholder:text-ink-soft focus:border-orange focus:outline-none"
+          }
+          style={
+            terminal
+              ? { border: "1px solid rgba(200,80,0,0.22)", borderTop: "2px solid rgba(200,80,0,0.3)" }
+              : undefined
+          }
         />
         {/* Honeypot — hidden from humans, tempting to bots. aria-hidden + off-screen. */}
         <input
@@ -104,13 +133,28 @@ export function WaitlistForm({ source = "hero" }: { source?: string }) {
         <button
           type="submit"
           disabled={status === "submitting"}
-          className="shrink-0 bg-orange px-5 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-orange/90 disabled:opacity-60"
+          className={
+            terminal
+              ? "mono shrink-0 whitespace-nowrap px-6 py-3 text-sm font-bold uppercase tracking-widest text-white transition-all disabled:opacity-60"
+              : "shrink-0 bg-orange px-5 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-orange/90 disabled:opacity-60"
+          }
+          style={
+            terminal
+              ? { background: "#e84500", clipPath: "polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%)", boxShadow: "0 0 20px rgba(232,69,0,0.4)" }
+              : undefined
+          }
         >
-          {status === "submitting" ? "Joining…" : "Join the waitlist"}
+          {status === "submitting"
+            ? terminal
+              ? "JOINING…"
+              : "Joining…"
+            : terminal
+            ? "JOIN WAITLIST →"
+            : "Join the waitlist"}
         </button>
       </div>
       {status === "error" && error && (
-        <p className="text-sm text-magenta" role="alert">
+        <p className={terminal ? "mono text-xs uppercase tracking-wide text-magenta" : "text-sm text-magenta"} role="alert">
           {error}
         </p>
       )}
