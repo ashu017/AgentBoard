@@ -7,7 +7,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, ChevronDown, AlertTriangle } from "lucide-react";
 import { signOut } from "@/app/login/actions";
+import type { Idea } from "@/lib/ideas";
 import { RULE } from "./board-ui";
+import { IdeaSwitcher } from "./IdeaSwitcher";
 
 export function Header({
   workspaceName,
@@ -17,6 +19,9 @@ export function Header({
   onNewProject,
   onNewTask,
   onNewAgent,
+  ideas,
+  activeIdeaId,
+  onNewIdea,
 }: {
   workspaceName: string;
   awaitingReview: number;
@@ -25,6 +30,9 @@ export function Header({
   onNewProject: () => void;
   onNewTask: () => void;
   onNewAgent: () => void;
+  ideas: Idea[];
+  activeIdeaId: string | null;
+  onNewIdea: () => void;
 }) {
   return (
     <header
@@ -35,6 +43,7 @@ export function Header({
         Agent<span className="text-orange">Board</span>
       </Link>
       <span className="mono hidden text-[11px] text-ink-soft sm:inline">{workspaceName}</span>
+      <IdeaSwitcher ideas={ideas} activeIdeaId={activeIdeaId} onNewIdea={onNewIdea} />
 
       <div className="ml-auto flex items-center gap-3">
         {awaitingReview > 0 && (
