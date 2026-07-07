@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { hasDbEnv, applyEnv, admin, seedTenant, teardownTenant, type SeededTenant } from "./helpers";
+import { hasDbEnv, applyEnv, admin, seedTenant, seedTask, teardownTenant, type SeededTenant } from "./helpers";
 import { generateApiKey } from "@/lib/api-key";
 
 const d = hasDbEnv ? describe : describe.skip;
@@ -154,6 +154,28 @@ d("first-class projects", () => {
       title: "bad", status: "todo", created_by_user_id: lead.userId,
     });
     expect(projWithParent.error).toBeTruthy();
+  });
+
+  it("spec brief arrives over list_my_tasks on an assigned project (the core guarantee)", async () => {
+    const brief = "BRD: build the widget.\n- goal one\n- goal two";
+    const projId = await seedTask(lead, { title: "Project with a brief", spec: brief });
+
+    const { listMyTasks } = await import("@/lib/agent-db");
+    const leadCtx = { agentId: lead.agentId, workspaceId: lead.workspaceId };
+    const mine = await listMyTasks(leadCtx);
+    const proj = mine.find((t) => t.id === projId);
+    // The agent receives the full brief verbatim — this is why the feature exists.
+    expect(proj?.spec).toBe(brief);
+  });
+
+  it("spec is null on a project created without a brief", async () => {
+    const projId = await seedTask(lead, { title: "Project, no brief" });
+
+    const { listMyTasks } = await import("@/lib/agent-db");
+    const leadCtx = { agentId: lead.agentId, workspaceId: lead.workspaceId };
+    const proj = (await listMyTasks(leadCtx)).find((t) => t.id === projId);
+    // Explicit "no brief provided" signal, not undefined/missing.
+    expect(proj?.spec).toBeNull();
   });
 
   it("DB allows an unassigned project but rejects an unassigned task", async () => {

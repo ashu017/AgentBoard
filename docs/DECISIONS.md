@@ -942,6 +942,30 @@ Two adaptations worth recording:
   via the browser supabase client (RLS-scoped, same client as the realtime refetch) and
   re-reads whenever the tasks realtime subscription fires.
 
+### D-PROJECT-SPEC — Projects carry an optional `spec` brief, delivered to agents but hidden from the board
+**Date:** 2026-07-08. Full design: `docs/superpowers/specs/2026-07-08-project-spec-field-design.md`.
+
+A project (`kind='project'`) gains a **`spec`** field: long-form context — a BRD, spec doc,
+or design doc — that the assigned agent reads before decomposing the project. Migration
+`0015_project_spec.sql` adds `tasks.spec text` (nullable, no CHECK tied to `kind`).
+
+- **Text, not a link.** The brief is stored inline so the agent is *guaranteed* the full
+  context over the existing `list_my_tasks` read path. A URL could be un-fetchable or
+  auth-gated for an agent runtime, so the "agent has context" promise would fail silently
+  (consistent with D-STACK's self-contained rationale).
+- **Optional, but surfaced.** Nullable column (existing projects incl. Miscellaneous, and
+  every task, read back `spec = null` — no backfill). The New/Edit Project modals always
+  show a prominent "Spec / brief" textarea, so managers reach for it without it being a hard
+  requirement that would fight the empty-project-first workflow (P1) or need a backfill.
+- **Project-level only.** Child tasks inherit context by living under the project (a lead
+  reads the whole subtree, P6). Per-task and idea-level specs are out of scope (YAGNI; the
+  latter would couple to the in-flight ideas work).
+- **Delivered, not displayed.** `spec` rides `select("*")` in `scopedTasks()` /
+  `scopedProjectSubtree()`, so `list_my_tasks` returns it with no serialization change; the
+  tool description and `SERVER_INSTRUCTIONS` decompose step tell agents to read it first. It
+  is carried on `BoardTask` (to hydrate the Edit modal) but **never rendered** on cards or
+  lane headers — the board stays title + description only.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed
