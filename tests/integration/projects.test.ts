@@ -12,10 +12,16 @@ d("first-class projects", () => {
   });
   afterAll(async () => { if (lead) await teardownTenant(lead); });
 
-  it("getOrCreateMiscProject is idempotent (one Misc per workspace)", async () => {
+  it("getOrCreateMiscProject is idempotent (one Misc per idea)", async () => {
     const { getOrCreateMiscProject } = await import("@/lib/projects");
-    const a = await getOrCreateMiscProject(admin(), lead.workspaceId);
-    const b = await getOrCreateMiscProject(admin(), lead.workspaceId);
+    // getOrCreateDefaultIdea uses the RLS server client, not admin(); for this
+    // admin-context integration test the seeded tenant isn't the authed user, so
+    // create/fetch an idea row directly via admin() and pass its id.
+    const { data: idea } = await admin().from("ideas")
+      .insert({ workspace_id: lead.workspaceId, name: "Test Idea" })
+      .select("id").single();
+    const a = await getOrCreateMiscProject(admin(), lead.workspaceId, idea!.id);
+    const b = await getOrCreateMiscProject(admin(), lead.workspaceId, idea!.id);
     expect(a.id).toBe(b.id);
     expect(a.kind).toBe("project");
     expect(a.assigned_agent_id).toBeNull();
@@ -25,6 +31,7 @@ d("first-class projects", () => {
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", lead.workspaceId)
       .eq("kind", "project")
+      .eq("idea_id", idea!.id)
       .is("assigned_agent_id", null);
     expect(count).toBe(1);
   });
