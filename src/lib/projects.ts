@@ -15,15 +15,21 @@ export interface ProjectRow {
   assigned_agent_id: string | null;
 }
 
-/** Return the workspace's Miscellaneous project, creating it if absent. */
+/**
+ * Return the idea's Miscellaneous project, creating it if absent. Miscellaneous
+ * is now one-per-idea (every project row must carry an idea_id — the
+ * tasks_project_has_idea CHECK), so the lookup + insert are scoped to ideaId.
+ */
 export async function getOrCreateMiscProject(
   supabase: SupabaseClient,
-  workspaceId: string
+  workspaceId: string,
+  ideaId: string
 ): Promise<ProjectRow> {
   const existing = await supabase
     .from("tasks")
     .select("id, workspace_id, title, kind, assigned_agent_id")
     .eq("workspace_id", workspaceId)
+    .eq("idea_id", ideaId)
     .eq("kind", "project")
     .eq("title", MISC_TITLE)
     .is("parent_id", null)
@@ -35,7 +41,7 @@ export async function getOrCreateMiscProject(
   // safe under a race.
   const created = await supabase
     .from("tasks")
-    .insert({ workspace_id: workspaceId, title: MISC_TITLE, kind: "project", status: "todo" })
+    .insert({ workspace_id: workspaceId, idea_id: ideaId, title: MISC_TITLE, kind: "project", status: "todo" })
     .select("id, workspace_id, title, kind, assigned_agent_id")
     .maybeSingle();
   if (created.data) return created.data as ProjectRow;
@@ -46,6 +52,7 @@ export async function getOrCreateMiscProject(
       .from("tasks")
       .select("id, workspace_id, title, kind, assigned_agent_id")
       .eq("workspace_id", workspaceId)
+      .eq("idea_id", ideaId)
       .eq("kind", "project")
       .eq("title", MISC_TITLE)
       .is("parent_id", null)
