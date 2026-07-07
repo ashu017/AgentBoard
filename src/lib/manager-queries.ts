@@ -21,6 +21,9 @@ export interface BoardTask {
   id: string;
   title: string;
   description: string | null;
+  /** Long-form brief (BRD/spec/design doc) on a project — delivered to agents,
+   * edited in the modal, never rendered on cards/lanes (D-PROJECT-SPEC). */
+  spec: string | null;
   status: TaskStatus;
   /** high | medium | low — shown on cards + project header (0014). */
   priority: "high" | "medium" | "low";
@@ -111,7 +114,7 @@ export async function listProjects(): Promise<ProjectOption[]> {
   return rows.sort((a, b) => (a.title === "Miscellaneous" ? -1 : b.title === "Miscellaneous" ? 1 : 0));
 }
 
-const BOARD_COLS = "id, title, description, status, priority, pr_url, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
+const BOARD_COLS = "id, title, description, spec, status, priority, pr_url, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
 
 /**
  * Board read for the SWIMLANE view (DECISIONS LANES-1): lanes are projects, and

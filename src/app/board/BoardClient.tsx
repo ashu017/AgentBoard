@@ -155,7 +155,7 @@ export function BoardClient({
     async function refetch() {
       const { data } = await supabase!
         .from("tasks")
-        .select("id, title, description, status, priority, pr_url, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at")
+        .select("id, title, description, spec, status, priority, pr_url, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at")
         .order("updated_at", { ascending: false })
         .limit(400);
       if (data) setTasks(data as BoardTask[]);
@@ -394,6 +394,29 @@ function DeleteConfirmPanel({ item, onDone }: { item: BoardTask; onDone: () => v
   );
 }
 
+/**
+ * Project spec field shared by the New/Edit project forms (name="spec"). The full
+ * brief (BRD / spec / design doc) delivered to the assigned agent over MCP — NOT
+ * shown on the board cards or lane headers (D-PROJECT-SPEC).
+ */
+function SpecField({ defaultValue = "" }: { defaultValue?: string }) {
+  return (
+    <label className="grid gap-1">
+      <span className="mono text-[11px] uppercase tracking-widest text-ink-soft">Spec / brief</span>
+      <textarea
+        name="spec"
+        defaultValue={defaultValue}
+        placeholder="Full brief for your agents — BRD, spec, or design doc"
+        rows={6}
+        className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm"
+      />
+      <span className="text-[11px] text-ink-soft">
+        Not shown on the board — delivered to the assigned agent as project context.
+      </span>
+    </label>
+  );
+}
+
 /** Priority selector shared by the New/Edit forms (name="priority", default medium). */
 function PrioritySelect({ defaultValue = "medium" }: { defaultValue?: "high" | "medium" | "low" }) {
   return (
@@ -428,6 +451,7 @@ function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () =>
           </p>
         )}
         <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <SpecField />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
       <div className="mt-4 flex gap-2">
@@ -505,6 +529,7 @@ function EditProjectPanel({ project, agents, onDone }: { project: BoardTask; age
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
         <textarea name="description" defaultValue={project.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <SpecField defaultValue={project.spec ?? ""} />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
       <div className="mt-4 flex gap-2">

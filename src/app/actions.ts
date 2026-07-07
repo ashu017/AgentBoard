@@ -117,8 +117,9 @@ export async function createProjectAction(
     const title = String(formData.get("title") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
+    const spec = String(formData.get("spec") ?? "");
     const priority = normalizePriority(formData.get("priority"));
-    const project = await _createProject(title, leadAgentId || undefined, description, priority);
+    const project = await _createProject(title, leadAgentId || undefined, description, priority, spec);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {
@@ -167,7 +168,8 @@ export async function updateProjectAction(
     const title = String(formData.get("title") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    await _updateProject(projectId, title, leadAgentId || undefined, description);
+    const spec = String(formData.get("spec") ?? "");
+    await _updateProject(projectId, title, leadAgentId || undefined, description, spec);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
