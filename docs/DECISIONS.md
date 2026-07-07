@@ -942,6 +942,40 @@ Two adaptations worth recording:
   via the browser supabase client (RLS-scoped, same client as the realtime refetch) and
   re-reads whenever the tasks realtime subscription fires.
 
+### D-IDEAS — Ideas: a third hierarchy level (workspace → idea → project → task)
+**Status:** ✅ **BUILT 2026-07-08** (branch `feat/ideas-hierarchy-level`). Full spec +
+plan: `docs/superpowers/specs/2026-07-07-ideas-hierarchy-level-design.md`,
+`docs/superpowers/plans/2026-07-08-ideas-hierarchy-level.md`.
+**Why:** the manager runs several parallel bodies of work (AgentBoard, bloodonor.com, office);
+one flat board interleaves unrelated projects and agents. Ideas add a grouping level so you
+focus on one idea at a time AND get a cross-idea "what needs me anywhere?" overview — without
+breaking single-tenant (ideas live inside the one workspace; they are NOT tenants). Rejected:
+separate workspace-per-idea (DB enforces one workspace/user; also kills the cross-idea view)
+and plain tags (too weak for agent scoping).
+**Data (migrations 0015 + 0016, applied live):** new `ideas` table (id, workspace_id, name,
+archived_at) + `agent_ideas` join (an agent belongs to ≥1 idea; shared agents span several) +
+`tasks.idea_id` on project rows, guarded by CHECK `tasks_project_has_idea` (every kind=project
+row has an idea). 0015 backfills one default "AgentBoard" idea per workspace, reparents all
+existing projects, links all existing agents. 0016 re-scopes the Miscellaneous unique index
+from (workspace_id) → (workspace_id, idea_id) — Miscellaneous is now one-per-idea. Owner-scoped
+RLS mirrors the existing human-plane policies.
+**UX:** `/board` opens on the **all-ideas overview** (a card per idea with in-review/in-progress/
+done/PR roll-ups — the `rollUpByIdea` pure helper, unit-tested). A header **idea switcher**
+(dropdown: All ideas / each idea / + New idea) scopes the whole board — projects, agents
+(via `agent_ideas`), live feed — to the selected idea. Create-project/task forms carry the
+active `ideaId`; the agent create form has an idea multi-select.
+**Agent plane UNCHANGED (important):** no MCP contract change. An agent's key still resolves to
+(agentId, workspaceId) and `list_my_tasks` returns its own tasks — naturally idea-bounded
+because its tasks only exist under linked ideas. Idea membership is an **organizational**
+boundary in the human plane, NOT a security boundary — a workspace-scoped agent could in
+principle be assigned a task in any idea. Fine for single-tenant v1; revisit if ideas ever need
+hard isolation.
+**Verification:** tsc/lint/build clean; **111 tests pass** (incl. live-DB integration —
+seed helpers updated to satisfy the new CHECK, `rollUpByIdea` unit-tested); walked the live
+board (overview on open, switcher, + New idea → bloodonor.com appears on the overview).
+Built subagent-driven; the DB migrations (0015/0016) were human-approved via the board's own
+`request_review` loop (the migration-gating rule + dogfooding the approval flow).
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed
