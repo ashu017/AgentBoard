@@ -301,7 +301,7 @@ export function BoardClient({
 
       <IdeaModal open={showNewIdea} onClose={() => setShowNewIdea(false)} />
 
-      {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAddAgent(false)} />}
+      {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} ideas={ideas} defaultIdeaId={activeIdeaId ?? undefined} onClose={() => setAddAgent(false)} />}
 
       {/* Manage an agent clicked in the sidebar — edit / revoke / delete. */}
       <AgentModal agent={selectedAgent} onClose={() => setSelectedAgent(null)} />

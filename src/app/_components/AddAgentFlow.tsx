@@ -2,6 +2,7 @@
 import { useActionState, useState } from "react";
 import { createAgentAction, type ActionResult } from "@/app/actions";
 import type { CreatedAgent } from "@/lib/manager-actions";
+import type { Idea } from "@/lib/ideas";
 import { Modal } from "@/app/_components/Modal";
 
 // Three-step agent onboarding wizard, each step its own modal:
@@ -14,7 +15,17 @@ import { Modal } from "@/app/_components/Modal";
 //                      button to step 2 in case you forgot to copy the key.
 // Mount this only while active; it starts on step 1 and calls onClose when the
 // user cancels step 1 or finishes step 3.
-export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; onClose: () => void }) {
+export function AddAgentFlow({
+  mcpEndpoint,
+  ideas = [],
+  defaultIdeaId,
+  onClose,
+}: {
+  mcpEndpoint: string;
+  ideas?: Idea[];
+  defaultIdeaId?: string;
+  onClose: () => void;
+}) {
   const [createState, formAction, creating] = useActionState<ActionResult<CreatedAgent> | null, FormData>(
     createAgentAction,
     null
@@ -33,6 +44,17 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
           <div className="grid gap-3">
             <input name="name" required placeholder="Agent name" className="border border-line bg-paper px-3 py-2 text-sm" />
             <input name="description" placeholder="Description (optional)" className="border border-line bg-paper px-3 py-2 text-sm" />
+            <fieldset className="mt-1">
+              <legend className="mono text-[11px] uppercase tracking-widest text-ink-soft">Ideas this agent works on</legend>
+              <div className="mt-1 flex flex-col gap-1">
+                {ideas.map((i) => (
+                  <label key={i.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="ideaIds" value={i.id} defaultChecked={i.id === defaultIdeaId} />
+                    {i.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
           {createState && !createState.ok && <p className="mt-2 text-sm text-magenta">{createState.error}</p>}
           <div className="mt-4 flex gap-2">
