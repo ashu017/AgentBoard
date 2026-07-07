@@ -84,13 +84,33 @@ workspace → idea → project → task
 
 ### Views (human plane)
 
-- **Idea switcher** (header/sidebar top): choose the current idea. The board — projects,
-  agents list, live feed, awaiting-review badge — scopes to that idea. This is focus mode.
-- **All-ideas overview**: a top-level view listing each active idea with roll-up counts
-  (in-review / in-progress / done, PRs raised). Click an idea → drill into its board. This is
-  the cross-idea overview.
+- **Idea switcher** — a compact **dropdown in the header** showing the current idea name, with
+  "All ideas" and "+ New idea" entries. Selecting an idea swaps the board below (projects,
+  agents list, live feed, awaiting-review badge all scope to it). This is focus mode.
+- **All-ideas overview** — the **default landing view on app open**. A card per active idea
+  with roll-up counts (in-review / in-progress / done, PRs raised). Click an idea → enter its
+  board. This is the cross-idea "what needs me anywhere?" scan.
 - Sidebar AGENTS section shows only the current idea's agents (via `agent_ideas`).
 - Idea management: create / rename / archive (Figma-styled modal, consistent with the board).
+
+### Customer experience — key user flows
+
+*Principle: an idea is a lens for the manager and is invisible to the agent.*
+
+1. **First run (post-migration):** existing projects are intact, grouped under a default
+   "AgentBoard" idea. A one-time hint explains Ideas + prompts creating a second. Never an
+   empty/confusing state.
+2. **App open → All-ideas overview:** lands on the cross-idea scan; manager picks an idea to
+   enter (or spots an awaiting-review count and clicks straight in).
+3. **Create an idea:** header dropdown → "+ New idea" → name it → board swaps to the new,
+   empty idea; manager adds agents (auto-linked to this idea) + projects here. Other ideas'
+   work is not shown.
+4. **Focus / switch:** header dropdown → pick another idea → whole board swaps. One click.
+5. **Shared agent:** the add/edit-agent form has an idea multi-select; a shared agent appears
+   in every selected idea's sidebar, a dedicated one in just its own.
+6. **Agent experience (unchanged):** agent connects with its key, calls `list_my_tasks`, gets
+   its tasks — already idea-bounded because its tasks only exist under ideas it's linked to.
+   The agent never sees or reasons about "ideas." No new agent-facing concept.
 
 ### Agent plane (MCP) — impact
 
