@@ -2,14 +2,13 @@
 import { useRouter } from "next/navigation";
 import type { IdeaRollup } from "@/lib/ideas";
 import { RULE } from "./board-ui";
-
-const REVIEW = "#7c3aed";
+import { IdeaCard } from "./IdeaCard";
 
 /**
  * All-ideas OVERVIEW. Each idea is a card that navigates into its focused board.
  * in_review is the attention signal — when > 0 it reads loud (purple, emphasized);
  * ideas with pending reviews float to the top so "what needs you" is literally
- * first. Counts use the project-header Stat pattern (big number / small label).
+ * first. Cards are shared with the header idea-picker modal (IdeaCard).
  */
 export function IdeaOverview({ rows }: { rows: IdeaRollup[] }) {
   const router = useRouter();
@@ -43,59 +42,6 @@ export function IdeaOverview({ rows }: { rows: IdeaRollup[] }) {
             ))}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function IdeaCard({ idea, onOpen }: { idea: IdeaRollup; onOpen: () => void }) {
-  const quiet = idea.inReview + idea.inProgress + idea.done + idea.prsRaised === 0;
-  const needsYou = idea.inReview > 0;
-
-  return (
-    <button
-      onClick={onOpen}
-      className="clip-corner group relative flex min-h-[9.5rem] flex-col border bg-paper p-4 text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-orange hover:bg-paper-2"
-      style={{ borderColor: needsYou ? REVIEW : RULE }}
-    >
-      <div className="display text-base uppercase tracking-wide leading-snug">{idea.name}</div>
-
-      {quiet ? (
-        <p className="mono mt-auto pt-4 text-[10px] uppercase tracking-widest text-ink-soft">
-          Nothing needs you here
-        </p>
-      ) : (
-        <div className="mt-auto grid grid-cols-4 gap-2 pt-4">
-          <Stat label="in review" value={idea.inReview} alert={needsYou} />
-          <Stat label="in prog" value={idea.inProgress} />
-          <Stat label="done" value={idea.done} />
-          <Stat label="PRs" value={idea.prsRaised} />
-        </div>
-      )}
-    </button>
-  );
-}
-
-/** Big-number / small-label stat, mirroring the project-header Stat. in_review is
- *  the attention signal: loud purple when > 0, muted when 0. */
-function Stat({ label, value, alert = false }: { label: string; value: number; alert?: boolean }) {
-  const emphasize = alert && value > 0;
-  return (
-    <div>
-      <div
-        className="display text-lg uppercase leading-none tabular-nums"
-        style={{
-          color: emphasize ? REVIEW : value > 0 ? "var(--ink)" : "var(--ink-soft)",
-          letterSpacing: "0.04em",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        className="mono mt-1 text-[9px] uppercase tracking-widest"
-        style={{ color: emphasize ? REVIEW : "var(--ink-soft)" }}
-      >
-        {label}
       </div>
     </div>
   );

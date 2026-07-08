@@ -51,16 +51,23 @@ export default async function BoardPage({
   }
 
   const filters = { ...parseFilters(sp), status: "all" as const };
-  const [{ tasks, capped }, agents, projects] = await Promise.all([
+  const [{ tasks, capped }, agents, projects, { tasks: allTasks }] = await Promise.all([
     listBoardTasks(filters, activeIdea),
     listAgents(activeIdea),
     listProjects(activeIdea),
+    // Unscoped board tasks for the idea-picker roll-up: the picker shows per-idea
+    // counts across ALL ideas even while we're focused inside one board.
+    listBoardTasks({ ...parseFilters(sp), status: "all" as const }),
   ]);
+  const overviewProjects = allTasks
+    .filter((t) => t.kind === "project")
+    .map((p) => ({ id: p.id, idea_id: p.idea_id }));
+  const overview = rollUpByIdea({ ideas, projects: overviewProjects, tasks: allTasks });
   return (
     <BoardClient
       mode="board"
       ideas={ideas}
-      overview={[]}
+      overview={overview}
       activeIdeaId={activeIdea}
       initialTasks={tasks}
       agents={agents}

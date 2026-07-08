@@ -7,9 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, ChevronDown, AlertTriangle } from "lucide-react";
 import { signOut } from "@/app/login/actions";
-import type { Idea } from "@/lib/ideas";
+import type { Idea, IdeaRollup } from "@/lib/ideas";
 import { RULE } from "./board-ui";
 import { IdeaSwitcher } from "./IdeaSwitcher";
+import { IdeaPickerModal } from "./IdeaPickerModal";
 
 export function Header({
   workspaceName,
@@ -20,6 +21,7 @@ export function Header({
   onNewTask,
   onNewAgent,
   ideas,
+  overview,
   activeIdeaId,
   onNewIdea,
 }: {
@@ -31,9 +33,11 @@ export function Header({
   onNewTask: () => void;
   onNewAgent: () => void;
   ideas: Idea[];
+  overview: IdeaRollup[];
   activeIdeaId: string | null;
   onNewIdea: () => void;
 }) {
+  const [ideaPickerOpen, setIdeaPickerOpen] = useState(false);
   return (
     <header
       className="flex items-center gap-4 border-b bg-paper-2 px-4 py-3"
@@ -43,7 +47,15 @@ export function Header({
         Agent<span className="text-orange">Board</span>
       </Link>
       <span className="mono hidden text-[11px] text-ink-soft sm:inline">{workspaceName}</span>
-      <IdeaSwitcher ideas={ideas} activeIdeaId={activeIdeaId} onNewIdea={onNewIdea} />
+      <IdeaSwitcher ideas={ideas} activeIdeaId={activeIdeaId} onOpen={() => setIdeaPickerOpen(true)} />
+      <IdeaPickerModal
+        open={ideaPickerOpen}
+        onClose={() => setIdeaPickerOpen(false)}
+        ideas={ideas}
+        overview={overview}
+        activeIdeaId={activeIdeaId}
+        onNewIdea={onNewIdea}
+      />
 
       <div className="ml-auto flex items-center gap-3">
         {awaitingReview > 0 && (
