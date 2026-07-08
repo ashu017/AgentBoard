@@ -138,7 +138,7 @@ export async function seedTenant(
  */
 export async function seedTask(
   t: SeededTenant,
-  fields: { title: string; status?: string; description?: string; kind?: string; parentId?: string | null }
+  fields: { title: string; status?: string; description?: string; spec?: string | null; kind?: string; parentId?: string | null }
 ): Promise<string> {
   const kind = fields.kind ?? "project";
   const { data, error } = await admin()
@@ -151,6 +151,7 @@ export async function seedTask(
       idea_id: kind === "project" ? t.ideaId : null,
       title: fields.title,
       description: fields.description ?? null,
+      spec: fields.spec ?? null,
       status: fields.status ?? "todo",
       created_by_user_id: t.userId,
     })

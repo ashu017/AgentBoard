@@ -409,7 +409,8 @@ export async function createProject(
   ideaId: string,
   leadAgentId?: string,
   description?: string,
-  priority: "high" | "medium" | "low" = "medium"
+  priority: "high" | "medium" | "low" = "medium",
+  spec?: string
 ): Promise<CreatedProject> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -444,6 +445,7 @@ export async function createProject(
       assigned_agent_id: leadAgentId || null,
       title: title.trim(),
       description: description?.trim() || null,
+      spec: spec?.trim() || null,
       status: INITIAL_STATUS,
       priority,
       created_by_user_id: session.user.id,
@@ -477,7 +479,8 @@ export async function updateProject(
   projectId: string,
   title: string,
   leadAgentId?: string,
-  description?: string
+  description?: string,
+  spec?: string
 ): Promise<void> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -502,6 +505,7 @@ export async function updateProject(
     .update({
       title: title.trim(),
       description: description?.trim() || null,
+      spec: spec?.trim() || null,
       assigned_agent_id: leadAgentId || null,
       updated_at: new Date().toISOString(),
     })

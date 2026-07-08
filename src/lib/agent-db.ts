@@ -51,6 +51,9 @@ export interface TaskRow {
   kind: "project" | "task";
   title: string;
   description: string | null;
+  /** Full brief (BRD/spec/design doc) on a project; null when none provided or on
+   * a leaf task. The context an agent reads before decomposing (D-PROJECT-SPEC). */
+  spec: string | null;
   status: TaskStatus;
   priority: "high" | "medium" | "low";
   pr_url: string | null;

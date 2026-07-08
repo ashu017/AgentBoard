@@ -46,7 +46,6 @@ export async function createAgentAction(
     const description = String(formData.get("description") ?? "");
     const ideaIds = formData.getAll("ideaIds").map(String).filter(Boolean);
     const agent = await _createAgent(name, description, ideaIds);
-    revalidatePath("/board/agents");
     revalidatePath("/board"); // board's assignee list + no-agents state depend on this
     return { ok: true, data: agent };
   } catch (e) {
@@ -63,7 +62,6 @@ export async function updateAgentAction(
     const name = String(formData.get("name") ?? "");
     const description = String(formData.get("description") ?? "");
     await _updateAgent(agentId, name, description);
-    revalidatePath("/board/agents");
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -77,7 +75,7 @@ export async function revokeAgentAction(
 ): Promise<ActionResult> {
   try {
     await _revokeAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/board/agents");
+    revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to revoke" };
@@ -90,7 +88,6 @@ export async function deleteAgentAction(
 ): Promise<ActionResult> {
   try {
     await _deleteAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/board/agents");
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -126,8 +123,9 @@ export async function createProjectAction(
     const ideaId = String(formData.get("ideaId") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
+    const spec = String(formData.get("spec") ?? "");
     const priority = normalizePriority(formData.get("priority"));
-    const project = await _createProject(title, ideaId, leadAgentId || undefined, description, priority);
+    const project = await _createProject(title, ideaId, leadAgentId || undefined, description, priority, spec || undefined);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {
@@ -176,7 +174,8 @@ export async function updateProjectAction(
     const title = String(formData.get("title") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    await _updateProject(projectId, title, leadAgentId || undefined, description);
+    const spec = String(formData.get("spec") ?? "");
+    await _updateProject(projectId, title, leadAgentId || undefined, description, spec);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
