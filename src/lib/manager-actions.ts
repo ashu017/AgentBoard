@@ -21,7 +21,11 @@ export interface CreatedAgent {
 }
 
 /** Create an agent in the caller's workspace; returns the one-time key. */
-export async function createAgent(name: string, description?: string): Promise<CreatedAgent> {
+export async function createAgent(
+  name: string,
+  description?: string,
+  ideaIds?: string[]
+): Promise<CreatedAgent> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
   if (!name.trim()) throw new Error("Agent name is required");
@@ -40,6 +44,12 @@ export async function createAgent(name: string, description?: string): Promise<C
     .select("id, name")
     .single();
   if (error) throw new Error(`create agent failed: ${error.message}`);
+
+  if (ideaIds && ideaIds.length > 0) {
+    const rows = ideaIds.map((idea_id) => ({ agent_id: data.id, idea_id }));
+    const { error: linkErr } = await supabase.from("agent_ideas").insert(rows);
+    if (linkErr) throw new Error(`link agent to ideas failed: ${linkErr.message}`);
+  }
 
   return { id: data.id, name: data.name, prefix: key.prefix, token: key.token };
 }
@@ -133,7 +143,8 @@ export async function createTask(
   assignedAgentId: string,
   description?: string,
   projectId?: string,
-  priority: "high" | "medium" | "low" = "medium"
+  priority: "high" | "medium" | "low" = "medium",
+  ideaId?: string
 ): Promise<CreatedTask> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -155,7 +166,8 @@ export async function createTask(
   // Resolve the parent project: explicit, else Miscellaneous (default home, P3).
   let parentId = projectId;
   if (!parentId) {
-    const misc = await getOrCreateMiscProject(supabase, session.workspace.id);
+    if (!ideaId) throw new Error("An idea is required to create a loose task");
+    const misc = await getOrCreateMiscProject(supabase, session.workspace.id, ideaId);
     parentId = misc.id;
   } else {
     const { data: proj } = await supabase
@@ -394,6 +406,7 @@ export interface CreatedProject {
  */
 export async function createProject(
   title: string,
+  ideaId: string,
   leadAgentId?: string,
   description?: string,
   priority: "high" | "medium" | "low" = "medium",
@@ -402,8 +415,15 @@ export async function createProject(
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
   if (!title.trim()) throw new Error("Project title is required");
+  if (!ideaId) throw new Error("An idea is required");
 
   const supabase = await createServerSupabase();
+
+  // The idea must exist, be active, and belong to this workspace.
+  const { data: idea } = await supabase
+    .from("ideas").select("id").eq("id", ideaId)
+    .eq("workspace_id", session.workspace.id).is("archived_at", null).maybeSingle();
+  if (!idea) throw new Error("Idea not found in your workspace");
 
   if (leadAgentId) {
     const { data: agent } = await supabase
@@ -420,6 +440,7 @@ export async function createProject(
     .from("tasks")
     .insert({
       workspace_id: session.workspace.id,
+      idea_id: ideaId,
       kind: "project",
       assigned_agent_id: leadAgentId || null,
       title: title.trim(),
@@ -528,4 +549,53 @@ export async function deleteTask(taskId: string): Promise<void> {
     .eq("id", taskId)
     .eq("workspace_id", session.workspace.id);
   if (error) throw new Error(`delete failed: ${error.message}`);
+}
+
+/** Create an idea in the caller's workspace. */
+export async function createIdea(name: string): Promise<{ id: string; name: string }> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!name.trim()) throw new Error("Idea name is required");
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("ideas")
+    .insert({ workspace_id: session.workspace.id, name: name.trim() })
+    .select("id, name")
+    .single();
+  if (error) throw new Error(`create idea failed: ${error.message}`);
+  return data;
+}
+
+/** Rename an idea (RLS-scoped to the caller's workspace). */
+export async function renameIdea(ideaId: string, name: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!name.trim()) throw new Error("Idea name is required");
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("ideas").update({ name: name.trim() })
+    .eq("id", ideaId).eq("workspace_id", session.workspace.id)
+    .select("id").maybeSingle();
+  if (error) throw new Error(`rename idea failed: ${error.message}`);
+  if (!data) throw new Error("Idea not found in your workspace");
+}
+
+/**
+ * Archive an idea (soft — hides from the switcher, keeps data). Refuses if it's
+ * the last active idea (there must always be a home for projects).
+ */
+export async function archiveIdea(ideaId: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  const supabase = await createServerSupabase();
+  const { count } = await supabase
+    .from("ideas").select("id", { count: "exact", head: true })
+    .eq("workspace_id", session.workspace.id).is("archived_at", null);
+  if ((count ?? 0) <= 1) throw new Error("Can't archive your only idea");
+  const { data, error } = await supabase
+    .from("ideas").update({ archived_at: new Date().toISOString() })
+    .eq("id", ideaId).eq("workspace_id", session.workspace.id)
+    .select("id").maybeSingle();
+  if (error) throw new Error(`archive idea failed: ${error.message}`);
+  if (!data) throw new Error("Idea not found in your workspace");
 }

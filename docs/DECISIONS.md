@@ -549,6 +549,20 @@ that silently works a project without decomposing it leaves the board empty unti
 any MCP client, not enforced in code (agents *can* still work without decomposing; the
 instruction steers them). Enforcement would need a product rule; deferred.
 
+### D-PR-SYNC — Sync with main before raising a PR
+**Status:** Active · 2026-07-08
+`SERVER_INSTRUCTIONS` (route.ts) now tells agents: before raising a pull request, ALWAYS
+fetch the latest default branch and merge/rebase it into the working branch, resolve conflicts,
+and re-run build/tests — so the PR is conflict-free and green. "A PR that conflicts with main
+isn't done."
+**Why:** surfaced concretely by the Ideas build (D-IDEAS) — while it was in flight, two PRs
+(#21, #22) merged to main and touched the same files (BOARD_COLS, createProject/createAgent,
+seed helpers) plus collided on a migration number (both used 0015). The branch raised its PR
+against a moved main and hit real conflicts. Baking the sync-first step into the agent
+guidance makes conflict-checking part of "finishing," not an afterthought. Mechanism-agnostic
+like D-PARALLEL / D-PROJECT-DECOMPOSE — guidance to any MCP client, not code-enforced (CI
+branch-protection would be the enforcement layer; deferred).
+
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
 **Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
 The board only receives an agent's live update if the agent-written (service-role) row
@@ -971,6 +985,40 @@ or design doc — that the assigned agent reads before decomposing the project. 
   tool description and `SERVER_INSTRUCTIONS` decompose step tell agents to read it first. It
   is carried on `BoardTask` (to hydrate the Edit modal) but **never rendered** on cards or
   lane headers — the board stays title + description only.
+
+### D-IDEAS — Ideas: a third hierarchy level (workspace → idea → project → task)
+**Status:** ✅ **BUILT 2026-07-08** (branch `feat/ideas-hierarchy-level`). Full spec +
+plan: `docs/superpowers/specs/2026-07-07-ideas-hierarchy-level-design.md`,
+`docs/superpowers/plans/2026-07-08-ideas-hierarchy-level.md`.
+**Why:** the manager runs several parallel bodies of work (AgentBoard, bloodonor.com, office);
+one flat board interleaves unrelated projects and agents. Ideas add a grouping level so you
+focus on one idea at a time AND get a cross-idea "what needs me anywhere?" overview — without
+breaking single-tenant (ideas live inside the one workspace; they are NOT tenants). Rejected:
+separate workspace-per-idea (DB enforces one workspace/user; also kills the cross-idea view)
+and plain tags (too weak for agent scoping).
+**Data (migrations 0015 + 0016, applied live):** new `ideas` table (id, workspace_id, name,
+archived_at) + `agent_ideas` join (an agent belongs to ≥1 idea; shared agents span several) +
+`tasks.idea_id` on project rows, guarded by CHECK `tasks_project_has_idea` (every kind=project
+row has an idea). 0015 backfills one default "AgentBoard" idea per workspace, reparents all
+existing projects, links all existing agents. 0016 re-scopes the Miscellaneous unique index
+from (workspace_id) → (workspace_id, idea_id) — Miscellaneous is now one-per-idea. Owner-scoped
+RLS mirrors the existing human-plane policies.
+**UX:** `/board` opens on the **all-ideas overview** (a card per idea with in-review/in-progress/
+done/PR roll-ups — the `rollUpByIdea` pure helper, unit-tested). A header **idea switcher**
+(dropdown: All ideas / each idea / + New idea) scopes the whole board — projects, agents
+(via `agent_ideas`), live feed — to the selected idea. Create-project/task forms carry the
+active `ideaId`; the agent create form has an idea multi-select.
+**Agent plane UNCHANGED (important):** no MCP contract change. An agent's key still resolves to
+(agentId, workspaceId) and `list_my_tasks` returns its own tasks — naturally idea-bounded
+because its tasks only exist under linked ideas. Idea membership is an **organizational**
+boundary in the human plane, NOT a security boundary — a workspace-scoped agent could in
+principle be assigned a task in any idea. Fine for single-tenant v1; revisit if ideas ever need
+hard isolation.
+**Verification:** tsc/lint/build clean; **111 tests pass** (incl. live-DB integration —
+seed helpers updated to satisfy the new CHECK, `rollUpByIdea` unit-tested); walked the live
+board (overview on open, switcher, + New idea → bloodonor.com appears on the overview).
+Built subagent-driven; the DB migrations (0015/0016) were human-approved via the board's own
+`request_review` loop (the migration-gating rule + dogfooding the approval flow).
 
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a

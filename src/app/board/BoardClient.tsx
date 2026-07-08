@@ -22,8 +22,15 @@ import { Sidebar, SidebarReveal, type ProjectSummary } from "./_components/Sideb
 import { AgentModal } from "./_components/AgentModal";
 import { ProjectView } from "./_components/ProjectView";
 import { LiveFeed } from "./_components/LiveFeed";
+import { IdeaOverview } from "./_components/IdeaOverview";
+import { IdeaModal } from "./_components/IdeaModal";
+import type { Idea, IdeaRollup } from "@/lib/ideas";
 
 export function BoardClient({
+  mode,
+  ideas,
+  overview,
+  activeIdeaId,
   initialTasks,
   agents,
   projects,
@@ -33,6 +40,10 @@ export function BoardClient({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   filters,
 }: {
+  mode: "overview" | "board";
+  ideas: Idea[];
+  overview: IdeaRollup[];
+  activeIdeaId: string | null;
   initialTasks: BoardTask[];
   agents: AgentRow[];
   projects: ProjectOption[];
@@ -57,6 +68,7 @@ export function BoardClient({
   const [announce, setAnnounce] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showNewIdea, setShowNewIdea] = useState(false);
   const [addAgent, setAddAgent] = useState(false);
   const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
@@ -208,6 +220,9 @@ export function BoardClient({
         onNewProject={() => setShowNewProject(true)}
         onNewTask={() => { setTaskProjectId(null); setShowNew(true); }}
         onNewAgent={() => setAddAgent(true)}
+        ideas={ideas}
+        activeIdeaId={activeIdeaId}
+        onNewIdea={() => setShowNewIdea(true)}
       />
 
       {/* Illegal-move / connection strip */}
@@ -224,6 +239,7 @@ export function BoardClient({
         </div>
       )}
 
+      {mode === "board" ? (
       <div className="flex min-h-0 flex-1">
         {sidebarHidden ? (
           <SidebarReveal onShow={() => setSidebarHidden(false)} />
@@ -279,8 +295,13 @@ export function BoardClient({
           refreshKey={feedRefresh}
         />
       </div>
+      ) : (
+        <IdeaOverview rows={overview} />
+      )}
 
-      {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} onClose={() => setAddAgent(false)} />}
+      <IdeaModal open={showNewIdea} onClose={() => setShowNewIdea(false)} />
+
+      {addAgent && <AddAgentFlow mcpEndpoint={mcpEndpoint} ideas={ideas} defaultIdeaId={activeIdeaId ?? undefined} onClose={() => setAddAgent(false)} />}
 
       {/* Manage an agent clicked in the sidebar — edit / revoke / delete. */}
       <AgentModal agent={selectedAgent} onClose={() => setSelectedAgent(null)} />
@@ -304,13 +325,14 @@ export function BoardClient({
             agents={agents}
             projects={projects}
             defaultProjectId={taskProjectId ?? activeProjectId ?? undefined}
+            activeIdeaId={activeIdeaId}
             onDone={() => setShowNew(false)}
           />
         )}
       </Modal>
 
       <Modal open={showNewProject} onClose={() => setShowNewProject(false)} title="New project" systemTag="SYS:: NEW PROJECT" variant="figma" size="lg">
-        <NewProjectPanel agents={agents} onDone={() => setShowNewProject(false)} />
+        <NewProjectPanel agents={agents} activeIdeaId={activeIdeaId} onDone={() => setShowNewProject(false)} />
       </Modal>
 
       <Modal open={Boolean(editTask)} onClose={() => setEditTask(null)} title="Edit task" systemTag="SYS:: EDIT TASK" variant="figma" size="lg">
@@ -431,13 +453,14 @@ function PrioritySelect({ defaultValue = "medium" }: { defaultValue?: "high" | "
   );
 }
 
-function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () => void }) {
+function NewProjectPanel({ agents, activeIdeaId, onDone }: { agents: AgentRow[]; activeIdeaId: string | null; onDone: () => void }) {
   const active = agents.filter((a) => !a.revoked_at);
   const noAgents = active.length === 0;
   const [state, formAction, pending] = useActionState<ActionResult<CreatedProject> | null, FormData>(createProjectAction, null);
   useEffect(() => { if (state?.ok) onDone(); }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <form action={formAction}>
+      <input type="hidden" name="ideaId" value={activeIdeaId ?? ""} />
       <div className="grid w-full gap-3">
         <input name="title" required placeholder="Project title" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
         <select name="leadAgentId" aria-label="Lead agent" defaultValue="" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
@@ -464,13 +487,14 @@ function NewProjectPanel({ agents, onDone }: { agents: AgentRow[]; onDone: () =>
   );
 }
 
-function NewTaskPanel({ agents, projects, defaultProjectId, onDone }: { agents: AgentRow[]; projects: ProjectOption[]; defaultProjectId?: string; onDone: () => void }) {
+function NewTaskPanel({ agents, projects, defaultProjectId, activeIdeaId, onDone }: { agents: AgentRow[]; projects: ProjectOption[]; defaultProjectId?: string; activeIdeaId: string | null; onDone: () => void }) {
   const active = agents.filter((a) => !a.revoked_at);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(createTaskAction, null);
   useEffect(() => { if (state?.ok) onDone(); }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
   const initialProject = defaultProjectId ?? projects[0]?.id ?? "";
   return (
     <form action={formAction}>
+      <input type="hidden" name="ideaId" value={activeIdeaId ?? ""} />
       <div className="grid w-full gap-3">
         <select name="projectId" aria-label="Project" defaultValue={initialProject} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
           {projects.map((p) => (<option key={p.id} value={p.id}>{p.title}</option>))}

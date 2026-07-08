@@ -29,6 +29,8 @@ export interface BoardTask {
   priority: "high" | "medium" | "low";
   /** Optional GitHub PR link surfaced on a Needs-Review card (0014). */
   pr_url: string | null;
+  /** The idea this project belongs to (project rows only; null on task rows). */
+  idea_id: string | null;
   result: string | null;
   /** Approval-loop fields (AL-E): populated while/after a task is in_review. */
   review_reason: string | null;
@@ -80,16 +82,19 @@ export function parseFilters(raw: { window?: string; status?: string; project?: 
   return { window, status, project };
 }
 
-export async function listAgents(): Promise<AgentRow[]> {
+export async function listAgents(ideaId?: string): Promise<AgentRow[]> {
   const supabase = await createServerSupabase();
   // tasks(count) is the embedded aggregate over the FK tasks.assigned_agent_id.
-  const { data, error } = await supabase
+  let query = supabase
     .from("agents")
-    .select("id, name, description, api_key_prefix, revoked_at, last_seen_at, created_at, tasks(count)")
+    .select("id, name, description, api_key_prefix, revoked_at, last_seen_at, created_at, tasks(count), agent_ideas!inner(idea_id)")
     .order("created_at", { ascending: true });
+  if (ideaId) query = query.eq("agent_ideas.idea_id", ideaId);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   return (data ?? []).map((a) => {
-    const { tasks, ...rest } = a as typeof a & { tasks?: { count: number }[] };
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { tasks, agent_ideas: _ai, ...rest } = a as typeof a & { tasks?: { count: number }[]; agent_ideas?: unknown };
     return { ...rest, task_count: tasks?.[0]?.count ?? 0 } as AgentRow;
   });
 }
@@ -101,20 +106,22 @@ export interface ProjectOption {
 }
 
 /** Projects in the caller's workspace (Add-Task selector). Miscellaneous first. */
-export async function listProjects(): Promise<ProjectOption[]> {
+export async function listProjects(ideaId?: string): Promise<ProjectOption[]> {
   const supabase = await createServerSupabase();
-  const { data, error } = await supabase
+  let query = supabase
     .from("tasks")
     .select("id, title, assigned_agent_id")
     .eq("kind", "project")
     .order("created_at", { ascending: true });
+  if (ideaId) query = query.eq("idea_id", ideaId);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as ProjectOption[];
   // Pin Miscellaneous to the top so it is the default selection.
   return rows.sort((a, b) => (a.title === "Miscellaneous" ? -1 : b.title === "Miscellaneous" ? 1 : 0));
 }
 
-const BOARD_COLS = "id, title, description, spec, status, priority, pr_url, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
+const BOARD_COLS = "id, title, description, spec, status, priority, pr_url, idea_id, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
 
 /**
  * Board read for the SWIMLANE view (DECISIONS LANES-1): lanes are projects, and
@@ -130,7 +137,8 @@ const BOARD_COLS = "id, title, description, spec, status, priority, pr_url, resu
  * capped in v1.
  */
 export async function listBoardTasks(
-  filters: BoardFilters = DEFAULT_FILTERS
+  filters: BoardFilters = DEFAULT_FILTERS,
+  ideaId?: string
 ): Promise<{ tasks: BoardTask[]; capped: boolean }> {
   const supabase = await createServerSupabase();
 
@@ -139,9 +147,11 @@ export async function listBoardTasks(
     .from("tasks")
     .select(BOARD_COLS)
     .is("parent_id", null)
+    .eq("kind", "project")
     .order("updated_at", { ascending: false })
     .limit(BOARD_TASK_LIMIT + 1);
 
+  if (ideaId) top = top.eq("idea_id", ideaId);
   if (filters.project !== "all") top = top.eq("id", filters.project);
   if (filters.window !== "all") {
     const since = new Date(Date.now() - WINDOW_DAYS[filters.window] * 86_400_000).toISOString();

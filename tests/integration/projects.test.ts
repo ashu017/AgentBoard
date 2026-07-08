@@ -12,10 +12,16 @@ d("first-class projects", () => {
   });
   afterAll(async () => { if (lead) await teardownTenant(lead); });
 
-  it("getOrCreateMiscProject is idempotent (one Misc per workspace)", async () => {
+  it("getOrCreateMiscProject is idempotent (one Misc per idea)", async () => {
     const { getOrCreateMiscProject } = await import("@/lib/projects");
-    const a = await getOrCreateMiscProject(admin(), lead.workspaceId);
-    const b = await getOrCreateMiscProject(admin(), lead.workspaceId);
+    // getOrCreateDefaultIdea uses the RLS server client, not admin(); for this
+    // admin-context integration test the seeded tenant isn't the authed user, so
+    // create/fetch an idea row directly via admin() and pass its id.
+    const { data: idea } = await admin().from("ideas")
+      .insert({ workspace_id: lead.workspaceId, name: "Test Idea" })
+      .select("id").single();
+    const a = await getOrCreateMiscProject(admin(), lead.workspaceId, idea!.id);
+    const b = await getOrCreateMiscProject(admin(), lead.workspaceId, idea!.id);
     expect(a.id).toBe(b.id);
     expect(a.kind).toBe("project");
     expect(a.assigned_agent_id).toBeNull();
@@ -25,6 +31,7 @@ d("first-class projects", () => {
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", lead.workspaceId)
       .eq("kind", "project")
+      .eq("idea_id", idea!.id)
       .is("assigned_agent_id", null);
     expect(count).toBe(1);
   });
@@ -41,7 +48,7 @@ d("first-class projects", () => {
     const a = admin();
     // A project led by `lead`.
     const { data: proj } = await a.from("tasks")
-      .insert({ workspace_id: lead.workspaceId, kind: "project",
+      .insert({ workspace_id: lead.workspaceId, kind: "project", idea_id: lead.ideaId,
                 assigned_agent_id: lead.agentId, title: "Ship feature", status: "todo",
                 created_by_user_id: lead.userId })
       .select("id").single();
@@ -70,7 +77,7 @@ d("first-class projects", () => {
   it("passing a child task id as parentId returns 404 (no sibling leak)", async () => {
     const a = admin();
     const { data: proj } = await a.from("tasks")
-      .insert({ workspace_id: lead.workspaceId, kind: "project",
+      .insert({ workspace_id: lead.workspaceId, kind: "project", idea_id: lead.ideaId,
                 assigned_agent_id: lead.agentId, title: "Parent proj", status: "todo",
                 created_by_user_id: lead.userId })
       .select("id").single();
@@ -89,7 +96,7 @@ d("first-class projects", () => {
   it("lead create_subtask assigns to another in-ws agent; foreign agent → 404", async () => {
     const a = admin();
     const { data: proj } = await a.from("tasks")
-      .insert({ workspace_id: lead.workspaceId, kind: "project",
+      .insert({ workspace_id: lead.workspaceId, kind: "project", idea_id: lead.ideaId,
                 assigned_agent_id: lead.agentId, title: "Proj X", status: "todo",
                 created_by_user_id: lead.userId })
       .select("id").single();
@@ -119,7 +126,7 @@ d("first-class projects", () => {
   it("create_subtask to a revoked in-workspace agent → 404", async () => {
     const a = admin();
     const { data: proj } = await a.from("tasks")
-      .insert({ workspace_id: lead.workspaceId, kind: "project",
+      .insert({ workspace_id: lead.workspaceId, kind: "project", idea_id: lead.ideaId,
                 assigned_agent_id: lead.agentId, title: "Proj R", status: "todo",
                 created_by_user_id: lead.userId })
       .select("id").single();
@@ -146,7 +153,8 @@ d("first-class projects", () => {
     expect(noParent.error).toBeTruthy();
 
     const { data: proj } = await a.from("tasks").insert({
-      workspace_id: lead.workspaceId, kind: "project", assigned_agent_id: lead.agentId,
+      workspace_id: lead.workspaceId, kind: "project", idea_id: lead.ideaId,
+      assigned_agent_id: lead.agentId,
       title: "P", status: "todo", created_by_user_id: lead.userId,
     }).select("id").single();
     const projWithParent = await a.from("tasks").insert({
@@ -181,7 +189,8 @@ d("first-class projects", () => {
   it("DB allows an unassigned project but rejects an unassigned task", async () => {
     const a = admin();
     const okProj = await a.from("tasks").insert({
-      workspace_id: lead.workspaceId, kind: "project", assigned_agent_id: null,
+      workspace_id: lead.workspaceId, kind: "project", idea_id: lead.ideaId,
+      assigned_agent_id: null,
       title: "unassigned proj", status: "todo", created_by_user_id: lead.userId,
     }).select("id").single();
     expect(okProj.error).toBeFalsy();

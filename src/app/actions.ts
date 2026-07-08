@@ -13,6 +13,9 @@ import {
   deleteTask as _deleteTask,
   moveTask as _moveTask,
   resolveReview as _resolveReview,
+  createIdea as _createIdea,
+  renameIdea as _renameIdea,
+  archiveIdea as _archiveIdea,
   type CreatedAgent,
   type CreatedProject,
   type ReviewVerdict,
@@ -41,7 +44,8 @@ export async function createAgentAction(
   try {
     const name = String(formData.get("name") ?? "");
     const description = String(formData.get("description") ?? "");
-    const agent = await _createAgent(name, description);
+    const ideaIds = formData.getAll("ideaIds").map(String).filter(Boolean);
+    const agent = await _createAgent(name, description, ideaIds);
     revalidatePath("/board"); // board's assignee list + no-agents state depend on this
     return { ok: true, data: agent };
   } catch (e) {
@@ -101,7 +105,8 @@ export async function createTaskAction(
     const description = String(formData.get("description") ?? "");
     const projectId = String(formData.get("projectId") ?? "");
     const priority = normalizePriority(formData.get("priority"));
-    await _createTask(title, assignee, description, projectId || undefined, priority);
+    const ideaId = String(formData.get("ideaId") ?? "");
+    await _createTask(title, assignee, description, projectId || undefined, priority, ideaId || undefined);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -115,11 +120,12 @@ export async function createProjectAction(
 ): Promise<ActionResult<CreatedProject>> {
   try {
     const title = String(formData.get("title") ?? "");
+    const ideaId = String(formData.get("ideaId") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
     const spec = String(formData.get("spec") ?? "");
     const priority = normalizePriority(formData.get("priority"));
-    const project = await _createProject(title, leadAgentId || undefined, description, priority, spec);
+    const project = await _createProject(title, ideaId, leadAgentId || undefined, description, priority, spec || undefined);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {
@@ -224,5 +230,44 @@ export async function moveTaskAction(taskId: string, to: string): Promise<Action
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to move task" };
+  }
+}
+
+export async function createIdeaAction(
+  _prev: ActionResult<{ id: string; name: string }> | null,
+  formData: FormData
+): Promise<ActionResult<{ id: string; name: string }>> {
+  try {
+    const idea = await _createIdea(String(formData.get("name") ?? ""));
+    revalidatePath("/board");
+    return { ok: true, data: idea };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to create idea" };
+  }
+}
+
+export async function renameIdeaAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await _renameIdea(String(formData.get("ideaId") ?? ""), String(formData.get("name") ?? ""));
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to rename idea" };
+  }
+}
+
+export async function archiveIdeaAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await _archiveIdea(String(formData.get("ideaId") ?? ""));
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to archive idea" };
   }
 }
