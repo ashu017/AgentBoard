@@ -549,6 +549,20 @@ that silently works a project without decomposing it leaves the board empty unti
 any MCP client, not enforced in code (agents *can* still work without decomposing; the
 instruction steers them). Enforcement would need a product rule; deferred.
 
+### D-PR-SYNC — Sync with main before raising a PR
+**Status:** Active · 2026-07-08
+`SERVER_INSTRUCTIONS` (route.ts) now tells agents: before raising a pull request, ALWAYS
+fetch the latest default branch and merge/rebase it into the working branch, resolve conflicts,
+and re-run build/tests — so the PR is conflict-free and green. "A PR that conflicts with main
+isn't done."
+**Why:** surfaced concretely by the Ideas build (D-IDEAS) — while it was in flight, two PRs
+(#21, #22) merged to main and touched the same files (BOARD_COLS, createProject/createAgent,
+seed helpers) plus collided on a migration number (both used 0015). The branch raised its PR
+against a moved main and hit real conflicts. Baking the sync-first step into the agent
+guidance makes conflict-checking part of "finishing," not an afterthought. Mechanism-agnostic
+like D-PARALLEL / D-PROJECT-DECOMPOSE — guidance to any MCP client, not code-enforced (CI
+branch-protection would be the enforcement layer; deferred).
+
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
 **Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
 The board only receives an agent's live update if the agent-written (service-role) row
