@@ -76,6 +76,11 @@ export function ProjectView({
 
   return (
     <div className="min-w-0 flex-1 overflow-y-auto p-5">
+      {/* Board content is capped and centered so on wide viewports the 4 columns
+          sit balanced instead of hugging the left with dead space on the right;
+          on smaller screens it still fills the width (the grid collapses to
+          1/2 cols). max-w-7xl comfortably fits the 4-up xl grid without cramping. */}
+      <div className="mx-auto w-full max-w-7xl">
       {/* Project header — title/priority/status on the left, stats block on the
           right (Figma layout), with the edit/add controls trailing the stats. */}
       <section className="enter-fade">
@@ -199,6 +204,7 @@ export function ProjectView({
           );
         })}
       </div>
+      </div>
     </div>
   );
 }
@@ -272,7 +278,11 @@ function TaskCard({
         if (draggedRef.current) return;
         onOpen();
       }}
-      className={`enter-fade clip-corner group cursor-pointer border bg-paper p-2.5 ${failed ? "border-magenta" : "border-line"}`}
+      /* Reads as a clickable button: on hover the border warms toward orange
+         and the card lifts a hair with a subtle shadow; on press it settles
+         back down. Kept restrained for the operator-console feel. Failed cards
+         keep their loud magenta border (no hover recolor) so the signal wins. */
+      className={`enter-fade clip-corner group cursor-pointer border bg-paper p-2.5 transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:shadow-sm ${failed ? "border-magenta" : "border-line hover:border-orange"}`}
     >
       <div className="flex items-start gap-2">
         <span
