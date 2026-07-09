@@ -221,6 +221,7 @@ export function BoardClient({
         onNewTask={() => { setTaskProjectId(null); setShowNew(true); }}
         onNewAgent={() => setAddAgent(true)}
         ideas={ideas}
+        overview={overview}
         activeIdeaId={activeIdeaId}
         onNewIdea={() => setShowNewIdea(true)}
       />
