@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
-import { STATUS_UI } from "@/lib/status-ui";
+import { STATUS_UI, statusColor } from "@/lib/status-ui";
 import type { TaskStatus } from "@/lib/task-status";
 import type { BoardTask } from "@/lib/manager-queries";
 import { RULE, relative } from "./board-ui";
@@ -81,21 +81,34 @@ export function LiveFeed({
         {loaded && events.length === 0 && (
           <p className="px-3 py-4 text-[11px] text-ink-soft">No recent activity.</p>
         )}
-        {events.map((e) => (
-          <div key={e.id} className="px-3 py-2" style={{ borderBottom: `1px solid ${RULE}` }}>
-            <div className="flex items-baseline gap-2">
-              <span className="mono text-[10px] uppercase tracking-widest text-orange">{EVENT_LABEL[e.event_type]}</span>
-              <span className="mono ml-auto shrink-0 text-[10px] text-ink-soft">{relative(e.created_at)}</span>
-            </div>
-            <div className="mt-0.5 truncate text-[12px] text-ink">{titleFor(e.task_id)}</div>
-            {e.event_type === "status_changed" && e.to_status && (
-              <div className="mono mt-0.5 text-[10px] text-ink-soft">
-                {e.from_status ? `${STATUS_UI[e.from_status].label} → ` : "→ "}
-                {STATUS_UI[e.to_status].label}
+        {events.map((e) => {
+          // Accent each row by the status it moved into (Figma live-feed: color =
+          // status signal per event); created/result-submitted events carry no
+          // target status, so they use the orange brand-event accent. Review rows
+          // resolve to purple automatically via the status SSOT.
+          const accent = e.to_status ? statusColor(e.to_status) : "var(--orange)";
+          return (
+            <div
+              key={e.id}
+              className="border-l-2 px-3 py-2"
+              style={{ borderBottom: `1px solid ${RULE}`, borderLeftColor: accent }}
+            >
+              <div className="flex items-baseline gap-2">
+                <span className="mono text-[10px] uppercase tracking-widest" style={{ color: accent }}>
+                  {EVENT_LABEL[e.event_type]}
+                </span>
+                <span className="mono ml-auto shrink-0 text-[10px] text-ink-soft">{relative(e.created_at)}</span>
               </div>
-            )}
-          </div>
-        ))}
+              <div className="mt-0.5 truncate text-[12px] text-ink">{titleFor(e.task_id)}</div>
+              {e.event_type === "status_changed" && e.to_status && (
+                <div className="mono mt-0.5 text-[10px] text-ink-soft">
+                  {e.from_status ? `${STATUS_UI[e.from_status].label} → ` : "→ "}
+                  <span style={{ color: accent }}>{STATUS_UI[e.to_status].label}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </aside>
   );
