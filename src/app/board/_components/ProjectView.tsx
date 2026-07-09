@@ -4,7 +4,7 @@
 // (in_progress), Needs Review (in_review), Done. Failed tasks surface in the Done
 // column area with a loud indicator. Drag-and-drop and the approval-loop review UI
 // are preserved from the original BoardClient (dataTransfer approach, inline yes/no).
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import {
   ListTodo,
   Clock,
@@ -37,6 +37,7 @@ export function ProjectView({
   onDeleteProject,
   onEditTask,
   onDeleteTask,
+  onOpenTask,
   onReview,
   dragging,
   onDragStart,
@@ -51,6 +52,7 @@ export function ProjectView({
   onDeleteProject: () => void;
   onEditTask: (task: BoardTask) => void;
   onDeleteTask: (task: BoardTask) => void;
+  onOpenTask: (task: BoardTask) => void;
   onReview: (task: BoardTask) => void;
   dragging: BoardTask | null;
   onDragStart: (task: BoardTask) => void;
@@ -186,6 +188,7 @@ export function ProjectView({
                     agent={t.assigned_agent_id ? agents.get(t.assigned_agent_id) : undefined}
                     onEdit={() => onEditTask(t)}
                     onDelete={() => onDeleteTask(t)}
+                    onOpen={() => onOpenTask(t)}
                     onReview={onReview}
                     onDragStart={() => onDragStart(t)}
                     onDragEnd={onDragEnd}
@@ -224,6 +227,7 @@ function TaskCard({
   agent,
   onEdit,
   onDelete,
+  onOpen,
   onReview,
   onDragStart,
   onDragEnd,
@@ -232,12 +236,16 @@ function TaskCard({
   agent?: AgentRow;
   onEdit: () => void;
   onDelete: () => void;
+  onOpen: () => void;
   onReview: (task: BoardTask) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }) {
   const failed = task.status === "failed";
   const terminal = task.status === "done" || failed;
+  // A drag ends with a spurious click on some browsers — this flag lets the card
+  // swallow that click so a drag is never misread as "open detail".
+  const draggedRef = useRef(false);
 
   return (
     <article
@@ -248,10 +256,23 @@ function TaskCard({
         // drops fail). onDragStart(task) drives the target highlight.
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/task-id", task.id);
+        draggedRef.current = true;
         onDragStart();
       }}
-      onDragEnd={onDragEnd}
-      className={`enter-fade clip-corner group cursor-grab border bg-paper p-2.5 active:cursor-grabbing ${failed ? "border-magenta" : "border-line"}`}
+      onDragEnd={() => {
+        onDragEnd();
+        // Clear on the next tick so the click fired right after the drop is
+        // still suppressed, but a genuine later click opens the card.
+        setTimeout(() => { draggedRef.current = false; }, 0);
+      }}
+      onClick={() => {
+        // Body click opens the detail modal — but not when it's the tail of a
+        // drag, and not when it bubbled up from an action button (those call
+        // stopPropagation below).
+        if (draggedRef.current) return;
+        onOpen();
+      }}
+      className={`enter-fade clip-corner group cursor-pointer border bg-paper p-2.5 ${failed ? "border-magenta" : "border-line"}`}
     >
       <div className="flex items-start gap-2">
         <span
@@ -259,16 +280,27 @@ function TaskCard({
           style={{ background: PRIORITY_COLORS[task.priority], marginTop: 5 }}
           title={`${task.priority} priority`}
         />
-        <div className="min-w-0 flex-1 text-sm">{task.title}</div>
+        {/* The title is a real button so the card is keyboard-openable (Enter/
+            Space) with a visible focus ring, while the whole body stays
+            mouse-clickable. It opens detail directly and stops the bubble so it
+            doesn't double-fire the article's onClick. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          className="min-w-0 flex-1 cursor-pointer text-left text-sm hover:text-orange"
+          aria-label={`Open task ${task.title}`}
+        >
+          {task.title}
+        </button>
       </div>
 
       <div className="mono mt-1 flex items-center gap-2 text-[10px] text-ink-soft">
         <span className="truncate">{agent ? agent.name : "—"}</span>
         <span className="ml-auto shrink-0">{relative(task.updated_at)}</span>
-        <button onClick={onEdit} aria-label={`Edit task ${task.title}`} title="Edit task" className="shrink-0 text-ink-soft hover:text-orange">
+        <button onClick={(e) => { e.stopPropagation(); onEdit(); }} aria-label={`Edit task ${task.title}`} title="Edit task" className="shrink-0 text-ink-soft hover:text-orange">
           <EditIcon />
         </button>
-        <button onClick={onDelete} aria-label={`Delete task ${task.title}`} title="Delete task" className="shrink-0 text-ink-soft hover:text-magenta">
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} aria-label={`Delete task ${task.title}`} title="Delete task" className="shrink-0 text-ink-soft hover:text-magenta">
           <TrashIcon />
         </button>
       </div>
@@ -281,17 +313,20 @@ function TaskCard({
               href={task.pr_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="mono mt-1 flex items-center gap-1 text-[10px] text-blue hover:underline"
             >
               <GitPullRequest size={11} /> View PR
             </a>
           )}
           {task.review_options && task.review_options.length > 0 ? (
-            <button onClick={() => onReview(task)} className="mono mt-1 block text-[10px] uppercase tracking-widest text-orange">
+            <button onClick={(e) => { e.stopPropagation(); onReview(task); }} className="mono mt-1 block text-[10px] uppercase tracking-widest text-orange">
               ⏸ Review {task.review_options.length} options →
             </button>
           ) : (
-            <ReviewActions taskId={task.id} />
+            <div onClick={(e) => e.stopPropagation()}>
+              <ReviewActions taskId={task.id} />
+            </div>
           )}
         </div>
       )}
@@ -301,6 +336,7 @@ function TaskCard({
           href={task.pr_url}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           className="mono mt-1.5 flex items-center gap-1 text-[10px] text-blue hover:underline"
         >
           <GitPullRequest size={11} /> View PR

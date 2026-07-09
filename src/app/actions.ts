@@ -37,6 +37,18 @@ function normalizePriority(raw: FormDataEntryValue | null): "high" | "medium" | 
   return v === "high" || v === "low" ? v : "medium";
 }
 
+/** Coerce a raw form value into a valid complexity, or null when unset (0018). */
+function normalizeComplexity(raw: FormDataEntryValue | null): "low" | "medium" | "high" | null {
+  const v = String(raw ?? "");
+  return v === "low" || v === "medium" || v === "high" ? v : null;
+}
+
+/** Coerce a raw date form value ("" → null; passes through a YYYY-MM-DD string). */
+function normalizeNeedBy(raw: FormDataEntryValue | null): string | null {
+  const v = String(raw ?? "").trim();
+  return v || null;
+}
+
 export async function createAgentAction(
   _prev: ActionResult<CreatedAgent> | null,
   formData: FormData
@@ -106,7 +118,8 @@ export async function createTaskAction(
     const projectId = String(formData.get("projectId") ?? "");
     const priority = normalizePriority(formData.get("priority"));
     const ideaId = String(formData.get("ideaId") ?? "");
-    await _createTask(title, assignee, description, projectId || undefined, priority, ideaId || undefined);
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    await _createTask(title, assignee, description, projectId || undefined, priority, ideaId || undefined, needBy);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -125,7 +138,9 @@ export async function createProjectAction(
     const description = String(formData.get("description") ?? "");
     const spec = String(formData.get("spec") ?? "");
     const priority = normalizePriority(formData.get("priority"));
-    const project = await _createProject(title, ideaId, leadAgentId || undefined, description, priority, spec || undefined);
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    const complexity = normalizeComplexity(formData.get("complexity"));
+    const project = await _createProject(title, ideaId, leadAgentId || undefined, description, priority, spec || undefined, needBy, complexity);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {
@@ -157,7 +172,10 @@ export async function updateTaskAction(
     const taskId = String(formData.get("taskId") ?? "");
     const title = String(formData.get("title") ?? "");
     const description = String(formData.get("description") ?? "");
-    await _updateTask(taskId, title, description);
+    const priority = normalizePriority(formData.get("priority"));
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    const assignedAgentId = String(formData.get("assignedAgentId") ?? "");
+    await _updateTask(taskId, title, description, priority, needBy, assignedAgentId || undefined);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -175,7 +193,10 @@ export async function updateProjectAction(
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
     const spec = String(formData.get("spec") ?? "");
-    await _updateProject(projectId, title, leadAgentId || undefined, description, spec);
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    const complexity = normalizeComplexity(formData.get("complexity"));
+    const priority = normalizePriority(formData.get("priority"));
+    await _updateProject(projectId, title, leadAgentId || undefined, description, spec, needBy, complexity, priority);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {

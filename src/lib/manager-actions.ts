@@ -144,7 +144,8 @@ export async function createTask(
   description?: string,
   projectId?: string,
   priority: "high" | "medium" | "low" = "medium",
-  ideaId?: string
+  ideaId?: string,
+  needBy?: string | null
 ): Promise<CreatedTask> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -191,6 +192,7 @@ export async function createTask(
       description: description?.trim() || null,
       status: INITIAL_STATUS,
       priority,
+      need_by: needBy || null,
       created_by_user_id: session.user.id,
     })
     .select("id, title, status, assigned_agent_id")
@@ -274,15 +276,20 @@ export async function createChildTask(
 }
 
 /**
- * Edit a task's title + description (board-ux #3). Runs under the user's RLS
- * session, so the update only matches a task in the caller's workspace (a foreign
- * id updates nothing). Only the editable text fields — status/assignee/parent are
- * unchanged. `updated_at` is bumped so the board reorders/refreshes.
+ * Edit a task's editable fields (board-ux #3, #6): title, description, priority,
+ * need-by date, and assignee. Runs under the user's RLS session, so the update
+ * only matches a task in the caller's workspace (a foreign id updates nothing).
+ * Status/parent are unchanged. Reassignment is allowed; the new assignee must be
+ * an active in-workspace agent (mirrors createTask's guard). `updated_at` is
+ * bumped so the board reorders/refreshes.
  */
 export async function updateTask(
   taskId: string,
   title: string,
-  description?: string
+  description?: string,
+  priority?: "high" | "medium" | "low",
+  needBy?: string | null,
+  assignedAgentId?: string
 ): Promise<void> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -290,13 +297,32 @@ export async function updateTask(
   if (!title.trim()) throw new Error("Task title is required");
 
   const supabase = await createServerSupabase();
+
+  // Reassignment (optional): validate the new assignee like createTask does. A
+  // task always keeps an assignee, so an empty value here is a no-op (unchanged).
+  if (assignedAgentId) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id, revoked_at")
+      .eq("id", assignedAgentId)
+      .eq("workspace_id", session.workspace.id)
+      .maybeSingle();
+    if (!agent) throw new Error("Assignee agent not found in your workspace");
+    if (agent.revoked_at) throw new Error("Cannot assign work to a revoked agent");
+  }
+
+  const patch: Record<string, unknown> = {
+    title: title.trim(),
+    description: description?.trim() || null,
+    need_by: needBy || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (priority) patch.priority = priority;
+  if (assignedAgentId) patch.assigned_agent_id = assignedAgentId;
+
   const { data, error } = await supabase
     .from("tasks")
-    .update({
-      title: title.trim(),
-      description: description?.trim() || null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", taskId)
     .eq("workspace_id", session.workspace.id)
     .select("id")
@@ -410,7 +436,9 @@ export async function createProject(
   leadAgentId?: string,
   description?: string,
   priority: "high" | "medium" | "low" = "medium",
-  spec?: string
+  spec?: string,
+  needBy?: string | null,
+  complexity?: "low" | "medium" | "high" | null
 ): Promise<CreatedProject> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -448,6 +476,8 @@ export async function createProject(
       spec: spec?.trim() || null,
       status: INITIAL_STATUS,
       priority,
+      need_by: needBy || null,
+      complexity: complexity || null,
       created_by_user_id: session.user.id,
     })
     .select("id, title, status, assigned_agent_id")
@@ -480,7 +510,10 @@ export async function updateProject(
   title: string,
   leadAgentId?: string,
   description?: string,
-  spec?: string
+  spec?: string,
+  needBy?: string | null,
+  complexity?: "low" | "medium" | "high" | null,
+  priority?: "high" | "medium" | "low"
 ): Promise<void> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -500,15 +533,20 @@ export async function updateProject(
     if (agent.revoked_at) throw new Error("Cannot assign a project to a revoked agent");
   }
 
+  const patch: Record<string, unknown> = {
+    title: title.trim(),
+    description: description?.trim() || null,
+    spec: spec?.trim() || null,
+    assigned_agent_id: leadAgentId || null,
+    need_by: needBy || null,
+    complexity: complexity || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (priority) patch.priority = priority;
+
   const { data, error } = await supabase
     .from("tasks")
-    .update({
-      title: title.trim(),
-      description: description?.trim() || null,
-      spec: spec?.trim() || null,
-      assigned_agent_id: leadAgentId || null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", projectId)
     .eq("workspace_id", session.workspace.id)
     .eq("kind", "project")
