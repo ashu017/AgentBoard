@@ -83,5 +83,17 @@ export function allowedTransitions(from: TaskStatus): TaskStatus[] {
   return [...TRANSITIONS[from]];
 }
 
+/**
+ * PR review gate (D-PR-DONE): an agent may NOT self-mark a task `done` while it
+ * carries a pull-request URL — the PR must be human-reviewed and merged first, so
+ * the task stays reviewable (in_review) for the manager to close. Returns true when
+ * a move to `done` must be REJECTED because a PR is raised. Only `done` is gated;
+ * `failed` and every non-done move are unaffected, as are tasks with no PR. This is
+ * the agent-plane predicate; the human plane (manager close after merge) is unaffected.
+ */
+export function prBlocksAgentDone(to: TaskStatus, hasPrUrl: boolean): boolean {
+  return to === "done" && hasPrUrl;
+}
+
 /** The status a manager-created task starts in (always assigned + `todo`). */
 export const INITIAL_STATUS: TaskStatus = "todo";
