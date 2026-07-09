@@ -563,6 +563,28 @@ guidance makes conflict-checking part of "finishing," not an afterthought. Mecha
 like D-PARALLEL / D-PROJECT-DECOMPOSE — guidance to any MCP client, not code-enforced (CI
 branch-protection would be the enforcement layer; deferred).
 
+### D-PR-DONE — A PR-raised task can't be self-marked `done` by the agent (stays in review)
+**Status:** Active · 2026-07-09
+When an agent attempts to move a task to `done` (via `submit_result(status='done')` OR
+`update_task_status('done')`) AND that task carries a pull-request URL — either already on the
+row, or being set in the same `submit_result` call — the move is rejected with `409`
+(illegalTransition): *"This task has a pull request — leave it in review for your manager to
+close after the PR is merged."* `failed` is still allowed (a PR-raised task can still fail);
+`in_review` and every other non-done move is unaffected; a task with no `pr_url` is completely
+unaffected (existing behavior preserved).
+**How:** the rule is a pure predicate `prBlocksAgentDone(to, hasPrUrl)` in the SSOT
+(`task-status.ts`), enforced in the single agent-plane funnel `applyTransition` in the confined
+`agent-db.ts` — so it covers BOTH mutation paths (and the "submit with pr_url then update to
+done" two-step) in one place, per the confinement convention. `submitResult` forwards the
+incoming `prUrl` so a PR set in the same call counts, not only one already persisted. The
+`submit_result` tool description + `SERVER_INSTRUCTIONS` tell agents to submit and leave the
+task in review rather than self-closing it.
+**Why:** raising a PR is not shipping — the human reviews and merges it, then closes the task.
+Letting an agent jump straight to `done` on `submit_result(status='done', pr_url=…)` skipped
+that human review gate. This complements AL4b (an agent can't self-close a review it raised):
+here the trigger is a PR link rather than an explicit `request_review`, and the enforcement is
+a done-specific gate rather than a blanket in_review lock.
+
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
 **Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
 The board only receives an agent's live update if the agent-written (service-role) row

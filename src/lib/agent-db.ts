@@ -7,6 +7,7 @@ import {
   isStatus,
   isTerminal,
   agentCanTransition,
+  prBlocksAgentDone,
 } from "@/lib/task-status";
 import {
   AgentError,
@@ -300,7 +301,13 @@ export async function submitResult(
   if (status !== undefined) {
     if (!isStatus(status)) throw badInput(`Unknown status: ${status}`);
     if (!isTerminal(status)) throw badInput("submit_result status must be terminal (done/failed)");
-    return applyTransition(ctx, task, status, { setResult: true, result: output });
+    // Pass the incoming pr_url so the PR-done gate (D-PR-DONE) sees a PR being set
+    // in THIS call, not only one already on the row.
+    return applyTransition(ctx, task, status, {
+      setResult: true,
+      result: output,
+      incomingPrUrl: prUrl ?? null,
+    });
   }
 
   // No status change: write the result in-place (still atomic w/ its event).
@@ -390,6 +397,9 @@ interface ApplyOpts {
   result?: string;
   /** result-only write: skip the canTransition check (status unchanged). */
   sameStatus?: boolean;
+  /** A PR URL being set in the SAME call (submit_result). Combined with the row's
+   * existing pr_url for the PR-done gate (D-PR-DONE). */
+  incomingPrUrl?: string | null;
 }
 
 async function applyTransition(
@@ -403,6 +413,16 @@ async function applyTransition(
   // never drive a task OUT of in_review (a review it raised is human-resolved).
   if (!opts.sameStatus && !agentCanTransition(from, to)) {
     throw illegalTransition(`Cannot move ${from} → ${to}`);
+  }
+  // PR review gate (D-PR-DONE): an agent may not self-mark a task `done` while it
+  // carries a PR — on the row already, or being set in this same submit_result
+  // call. The single funnel here covers BOTH submit_result and update_task_status.
+  // The task must stay reviewable for the human to close after the PR is merged.
+  const hasPrUrl = Boolean(task.pr_url || opts.incomingPrUrl);
+  if (prBlocksAgentDone(to, hasPrUrl)) {
+    throw illegalTransition(
+      "This task has a pull request — leave it in review for your manager to close after the PR is merged. You cannot mark a PR-raised task done yourself."
+    );
   }
 
   const { data, error } = await db().rpc("agent_apply_transition", {

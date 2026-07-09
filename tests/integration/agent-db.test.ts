@@ -254,6 +254,61 @@ d("agent-db (live DB)", () => {
     });
   });
 
+  // ── PR review gate (D-PR-DONE): a PR-raised task can't be self-marked done ──
+  describe("submitResult / updateTaskStatus PR-done gate (D-PR-DONE)", () => {
+    it("submit_result done + pr_url in the same call → 409 (task stays reviewable)", async () => {
+      const id = await seedTask(A, { title: "A-pr-inline", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await expect(
+        agentDb.submitResult(ctxA, id, "shipped", "done", "https://github.com/x/y/pull/1")
+      ).rejects.toMatchObject({ code: 409 });
+
+      // The result-in-place write still happened, but the status was NOT moved to done.
+      const [after] = (await agentDb.listMyTasks(ctxA)).filter((t) => t.id === id);
+      expect(after.status).not.toBe("done");
+    });
+
+    it("submit_result done when the task ALREADY has a pr_url → 409", async () => {
+      const id = await seedTask(A, { title: "A-pr-existing", status: "in_progress" });
+      const { admin } = await import("./helpers");
+      await admin().from("tasks").update({ pr_url: "https://github.com/x/y/pull/2" }).eq("id", id);
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await expect(agentDb.submitResult(ctxA, id, "shipped", "done")).rejects.toMatchObject({ code: 409 });
+    });
+
+    it("update_task_status → done when the task has a pr_url → 409", async () => {
+      const id = await seedTask(A, { title: "A-pr-update", status: "in_progress" });
+      const { admin } = await import("./helpers");
+      await admin().from("tasks").update({ pr_url: "https://github.com/x/y/pull/3" }).eq("id", id);
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      await expect(agentDb.updateTaskStatus(ctxA, id, "done")).rejects.toMatchObject({ code: 409 });
+    });
+
+    it("submit_result done with NO pr_url anywhere → still works (unchanged behavior)", async () => {
+      const id = await seedTask(A, { title: "A-no-pr", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      const r = await agentDb.submitResult(ctxA, id, "done work", "done");
+      expect(r.status).toBe("done");
+    });
+
+    it("submit_result FAILED with a pr_url → still allowed (a PR-raised task can fail)", async () => {
+      const id = await seedTask(A, { title: "A-pr-fail", status: "in_progress" });
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      const r = await agentDb.submitResult(ctxA, id, "gave up", "failed", "https://github.com/x/y/pull/4");
+      expect(r.status).toBe("failed");
+      expect(r.pr_url).toBe("https://github.com/x/y/pull/4");
+    });
+
+    it("moving a PR-raised task to in_review → still allowed (only done is gated)", async () => {
+      const id = await seedTask(A, { title: "A-pr-review", status: "in_progress" });
+      const { admin } = await import("./helpers");
+      await admin().from("tasks").update({ pr_url: "https://github.com/x/y/pull/5" }).eq("id", id);
+      const ctxA = await agentDb.resolveAgentByKey(A.token);
+      const r = await agentDb.updateTaskStatus(ctxA, id, "in_review");
+      expect(r.status).toBe("in_review");
+    });
+  });
+
   describe("touchLastSeen (D10 throttle)", () => {
     it("writes on first call, skips within the throttle window", async () => {
       const ctxA = await agentDb.resolveAgentByKey(A.token);
