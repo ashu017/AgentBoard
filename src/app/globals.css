@@ -20,12 +20,14 @@
   --blue: #0088cc; /* in_progress accent */
   --magenta: #cc0055; /* destructive / Failed — the only loud color */
 
-  /* Status signal colors (color carries meaning, not decoration). */
-  --st-todo: #6b6157;
-  --st-progress: #0088cc;
-  --st-review: #b8860b;
-  --st-done: #5c7a4a;
-  --st-failed: #cc0055;
+  /* Status signal colors (color carries meaning, not decoration). Values match
+     the Figma "Personal tasks dashboard" reference (same file the landing page
+     was rebuilt from — see DECISIONS 4A / D-LANDING-FIGMA). */
+  --st-todo: #6b6157; /* neutral warm gray — not started */
+  --st-progress: #0088cc; /* blue — running */
+  --st-review: #7c3aed; /* purple — needs review (Figma emphasis, was #b8860b) */
+  --st-done: #059669; /* green — done (Figma, was olive #5c7a4a) */
+  --st-failed: #cc0055; /* magenta — the only loud color */
 }
 
 @theme inline {
@@ -125,11 +127,11 @@ body {
 @keyframes dot-pulse {
   0%, 100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 rgba(92, 122, 74, 0.45);
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.45);
   }
   50% {
     opacity: 0.65;
-    box-shadow: 0 0 0 4px rgba(92, 122, 74, 0);
+    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0);
   }
 }
 .dot-pulse {

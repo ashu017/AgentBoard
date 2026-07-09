@@ -1020,6 +1020,21 @@ board (overview on open, switcher, + New idea → bloodonor.com appears on the o
 Built subagent-driven; the DB migrations (0015/0016) were human-approved via the board's own
 `request_review` loop (the migration-gating rule + dogfooding the approval flow).
 
+### D-STATUS-PALETTE — Board status hues matched to the Figma reference
+**Date:** 2026-07-09. The board status SSOT tokens in `globals.css` were matched to the Figma
+"Personal tasks dashboard" reference (same file the landing page + board draw from — see
+D-LANDING-FIGMA and 4A): **`--st-review` is now purple `#7c3aed`** (was goldenrod `#b8860b`)
+and **`--st-done` is now green `#059669`** (was olive `#5c7a4a`). Everything downstream
+(columns, dots, icons, sidebar, badges, live-feed accents) picks these up automatically via
+`statusColor()` / `var(--st-…)`; no per-layer color redefinition.
+**Design-principle relaxation (why this is recorded):** 4A + CLAUDE.md said "color = status
+signal only; Failed is the only loud color." Introducing saturated purple + green beyond
+Failed's magenta softens that. The guidance is **relaxed** to: *Failed is the only
+magenta/alarm color; the status hues (todo / in-progress / in-review / done) each carry
+their Figma signal color.* Color still means status, not decoration — it now just spans the
+full status set as the Figma reference intended, rather than reserving saturation for Failed
+alone.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed

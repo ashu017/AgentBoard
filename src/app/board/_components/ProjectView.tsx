@@ -208,13 +208,13 @@ function Stat({ label, value, alert = false }: { label: string; value: number; a
     <div className="text-center">
       <div
         className="display text-xl uppercase leading-none"
-        style={{ color: alert ? "#7c3aed" : "var(--ink)", letterSpacing: "0.04em" }}
+        style={{ color: alert ? "var(--st-review)" : "var(--ink)", letterSpacing: "0.04em" }}
       >
         {value}
       </div>
       <div
         className="mono mt-1 text-[9px] uppercase tracking-widest"
-        style={{ color: alert ? "#7c3aed" : "var(--ink-soft)" }}
+        style={{ color: alert ? "var(--st-review)" : "var(--ink-soft)" }}
       >
         {label}
       </div>
