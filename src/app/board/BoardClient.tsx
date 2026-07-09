@@ -171,7 +171,7 @@ export function BoardClient({
     async function refetch() {
       const { data } = await supabase!
         .from("tasks")
-        .select("id, title, description, spec, status, priority, pr_url, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at")
+        .select("id, title, description, spec, status, priority, pr_url, need_by, complexity, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at")
         .order("updated_at", { ascending: false })
         .limit(400);
       if (data) setTasks(data as BoardTask[]);
@@ -341,7 +341,7 @@ export function BoardClient({
       </Modal>
 
       <Modal open={Boolean(editTask)} onClose={() => setEditTask(null)} title="Edit task" systemTag="SYS:: EDIT TASK" variant="figma" size="lg">
-        {editTask && <EditTaskPanel task={editTask} onDone={() => setEditTask(null)} />}
+        {editTask && <EditTaskPanel task={editTask} agents={agents} onDone={() => setEditTask(null)} />}
       </Modal>
 
       <Modal open={Boolean(editProject)} onClose={() => setEditProject(null)} title="Edit project" systemTag="SYS:: EDIT PROJECT" variant="figma" size="lg">
@@ -414,6 +414,16 @@ function TaskDetailPanel({
         <span className="border border-line px-1.5 py-0.5 text-ink-soft">
           {agent ? agent.name : "unassigned"}
         </span>
+        {task.complexity && (
+          <span className="border border-line px-1.5 py-0.5 text-ink-soft">
+            {task.complexity}
+          </span>
+        )}
+        {task.need_by && (
+          <span className="border border-line px-1.5 py-0.5 text-ink-soft normal-case tracking-normal">
+            by {formatNeedBy(task.need_by)}
+          </span>
+        )}
         <span className="ml-auto text-ink-soft normal-case tracking-normal">updated {relative(task.updated_at)} ago</span>
       </div>
 
@@ -470,6 +480,16 @@ function TaskDetailPanel({
       </div>
     </div>
   );
+}
+
+/**
+ * Format a need-by DATE ("2026-07-31") for display. Parsed as UTC noon so the
+ * calendar date never shifts across timezones (a bare date has no time-of-day).
+ */
+function formatNeedBy(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 /** A labeled block in the task-detail read view (mono uppercase caption + body). */
@@ -581,6 +601,37 @@ function PrioritySelect({ defaultValue = "medium" }: { defaultValue?: "high" | "
   );
 }
 
+/** Optional target-date field shared by the New/Edit forms (name="needBy"). */
+function NeedByField({ defaultValue = "" }: { defaultValue?: string }) {
+  return (
+    <label className="mono flex items-center gap-2 text-[11px] uppercase tracking-widest text-ink-soft">
+      Need by
+      <input
+        type="date"
+        name="needBy"
+        defaultValue={defaultValue}
+        className="border border-line bg-paper px-2 py-1 text-sm normal-case tracking-normal text-ink"
+      />
+    </label>
+  );
+}
+
+/** Complexity selector shared by the New/Edit forms (name="complexity"). Optional
+ * — the empty option leaves it unset (null). Allowed values mirror the DB CHECK. */
+function ComplexitySelect({ defaultValue = "" }: { defaultValue?: "" | "low" | "medium" | "high" }) {
+  return (
+    <label className="mono flex items-center gap-2 text-[11px] uppercase tracking-widest text-ink-soft">
+      Complexity
+      <select name="complexity" defaultValue={defaultValue} className="border border-line bg-paper px-2 py-1 text-sm normal-case tracking-normal text-ink">
+        <option value="">—</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
+  );
+}
+
 function NewProjectPanel({ agents, activeIdeaId, onDone }: { agents: AgentRow[]; activeIdeaId: string | null; onDone: () => void }) {
   const active = agents.filter((a) => !a.revoked_at);
   const noAgents = active.length === 0;
@@ -595,7 +646,11 @@ function NewProjectPanel({ agents, activeIdeaId, onDone }: { agents: AgentRow[];
           <option value="">Unassigned (no lead agent)</option>
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
-        <PrioritySelect />
+        <div className="flex flex-wrap items-center gap-4">
+          <PrioritySelect />
+          <ComplexitySelect />
+          <NeedByField />
+        </div>
         {noAgents && (
           <p className="text-[11px] text-ink-soft">
             No agents yet — you can create the project now and assign a lead (and tasks) once you add one.
@@ -632,7 +687,10 @@ function NewTaskPanel({ agents, projects, defaultProjectId, activeIdeaId, onDone
           <option value="" disabled>Assign to…</option>
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
-        <PrioritySelect />
+        <div className="flex flex-wrap items-center gap-4">
+          <PrioritySelect />
+          <NeedByField />
+        </div>
         <textarea name="description" placeholder="Description (optional)" rows={2} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
@@ -646,14 +704,24 @@ function NewTaskPanel({ agents, projects, defaultProjectId, activeIdeaId, onDone
   );
 }
 
-function EditTaskPanel({ task, onDone }: { task: BoardTask; onDone: () => void }) {
+function EditTaskPanel({ task, agents, onDone }: { task: BoardTask; agents: AgentRow[]; onDone: () => void }) {
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(updateTaskAction, null);
   useEffect(() => { if (state?.ok) onDone(); }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Assignable agents: active ones, plus the task's current assignee even if it
+  // has since been revoked (so the current selection is always shown/kept).
+  const assignable = agents.filter((a) => !a.revoked_at || a.id === task.assigned_agent_id);
   return (
     <form action={formAction}>
       <input type="hidden" name="taskId" value={task.id} />
       <div className="grid w-full gap-3">
         <input name="title" required defaultValue={task.title} placeholder="Task title" className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
+        <select name="assignedAgentId" aria-label="Assignee" defaultValue={task.assigned_agent_id ?? ""} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm">
+          {assignable.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix}){a.revoked_at ? " — revoked" : ""}</option>))}
+        </select>
+        <div className="flex flex-wrap items-center gap-4">
+          <PrioritySelect defaultValue={task.priority} />
+          <NeedByField defaultValue={task.need_by ?? ""} />
+        </div>
         <textarea name="description" defaultValue={task.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
       </div>
       {state && !state.ok && <p className="mt-2 text-sm text-magenta">{state.error}</p>}
@@ -680,6 +748,11 @@ function EditProjectPanel({ project, agents, onDone }: { project: BoardTask; age
           <option value="">Unassigned (no lead agent)</option>
           {active.map((a) => (<option key={a.id} value={a.id}>{a.name} (ab_{a.api_key_prefix})</option>))}
         </select>
+        <div className="flex flex-wrap items-center gap-4">
+          <PrioritySelect defaultValue={project.priority} />
+          <ComplexitySelect defaultValue={project.complexity ?? ""} />
+          <NeedByField defaultValue={project.need_by ?? ""} />
+        </div>
         <textarea name="description" defaultValue={project.description ?? ""} placeholder="Description (optional)" rows={3} className="w-full min-w-0 border border-line bg-paper px-3 py-2 text-sm" />
         <SpecField defaultValue={project.spec ?? ""} />
       </div>

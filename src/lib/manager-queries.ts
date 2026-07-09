@@ -29,6 +29,11 @@ export interface BoardTask {
   priority: "high" | "medium" | "low";
   /** Optional GitHub PR link surfaced on a Needs-Review card (0014). */
   pr_url: string | null;
+  /** Optional target date (DATE string, e.g. "2026-07-31") — set by the human,
+   * shown in the detail modal + forms (0018). Null when unset. */
+  need_by: string | null;
+  /** Rough sizing signal — low | medium | high, or null when unset (0018). */
+  complexity: "low" | "medium" | "high" | null;
   /** The idea this project belongs to (project rows only; null on task rows). */
   idea_id: string | null;
   result: string | null;
@@ -121,7 +126,7 @@ export async function listProjects(ideaId?: string): Promise<ProjectOption[]> {
   return rows.sort((a, b) => (a.title === "Miscellaneous" ? -1 : b.title === "Miscellaneous" ? 1 : 0));
 }
 
-const BOARD_COLS = "id, title, description, spec, status, priority, pr_url, idea_id, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
+const BOARD_COLS = "id, title, description, spec, status, priority, pr_url, need_by, complexity, idea_id, result, assigned_agent_id, parent_id, kind, review_reason, review_options, review_verdict, review_selected_option, review_note, updated_at";
 
 /**
  * Board read for the SWIMLANE view (DECISIONS LANES-1): lanes are projects, and
