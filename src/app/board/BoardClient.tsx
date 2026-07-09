@@ -1,8 +1,9 @@
 "use client";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
+import { GitPullRequest } from "lucide-react";
 import { canTransition, type TaskStatus } from "@/lib/task-status";
-import { STATUS_UI } from "@/lib/status-ui";
+import { STATUS_UI, statusColor } from "@/lib/status-ui";
 import {
   createTaskAction,
   createProjectAction,
@@ -21,6 +22,7 @@ import { Header } from "./_components/Header";
 import { Sidebar, SidebarReveal, type ProjectSummary } from "./_components/Sidebar";
 import { AgentModal } from "./_components/AgentModal";
 import { ProjectView } from "./_components/ProjectView";
+import { relative, PRIORITY_COLORS } from "./_components/board-ui";
 import { LiveFeed } from "./_components/LiveFeed";
 import { IdeaOverview } from "./_components/IdeaOverview";
 import { IdeaModal } from "./_components/IdeaModal";
@@ -74,6 +76,8 @@ export function BoardClient({
   const [editTask, setEditTask] = useState<BoardTask | null>(null);
   const [editProject, setEditProject] = useState<BoardTask | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<BoardTask | null>(null);
+  // Task whose read-only detail modal is open (clicked card body).
+  const [detailTask, setDetailTask] = useState<BoardTask | null>(null);
   const [dragging, setDragging] = useState<BoardTask | null>(null);
   const [moveError, setMoveError] = useState("");
   const [reviewTask, setReviewTask] = useState<BoardTask | null>(null);
@@ -274,6 +278,7 @@ export function BoardClient({
             onDeleteProject={() => setConfirmDelete(activeProject)}
             onEditTask={setEditTask}
             onDeleteTask={setConfirmDelete}
+            onOpenTask={setDetailTask}
             onReview={setReviewTask}
             dragging={dragging}
             onDragStart={setDragging}
@@ -350,6 +355,129 @@ export function BoardClient({
       <Modal open={Boolean(reviewTask)} onClose={() => setReviewTask(null)} title="Review request" systemTag="SYS:: REVIEW REQUEST" variant="figma" size="lg">
         {reviewTask && <ReviewModalPanel task={reviewTask} onDone={() => setReviewTask(null)} />}
       </Modal>
+
+      <Modal open={Boolean(detailTask)} onClose={() => setDetailTask(null)} title="Task detail" systemTag="SYS:: TASK" variant="figma" size="lg">
+        {detailTask && (
+          <TaskDetailPanel
+            task={detailTask}
+            agent={detailTask.assigned_agent_id ? agentMap.get(detailTask.assigned_agent_id) : undefined}
+            // Edit/Delete reuse the SAME state the card wires — close detail first
+            // so only one figma modal is ever mounted at a time.
+            onEdit={() => { const t = detailTask; setDetailTask(null); setEditTask(t); }}
+            onDelete={() => { const t = detailTask; setDetailTask(null); setConfirmDelete(t); }}
+            onClose={() => setDetailTask(null)}
+          />
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/**
+ * Read-only task detail (opened by clicking a card body). Full details in a clean
+ * layout — status/priority/agent as machine-ish mono chips, description/result/PR
+ * and the in_review approval context. Edit and Delete hand off to the existing
+ * card flows (EditTaskPanel / DeleteConfirmPanel) rather than duplicating a form.
+ */
+function TaskDetailPanel({
+  task,
+  agent,
+  onEdit,
+  onDelete,
+  onClose,
+}: {
+  task: BoardTask;
+  agent?: AgentRow;
+  onEdit: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const failed = task.status === "failed";
+  const terminal = task.status === "done" || failed;
+  const verdictOption =
+    task.review_selected_option && task.review_options
+      ? task.review_options.find((o) => o.id === task.review_selected_option)
+      : undefined;
+  return (
+    <div>
+      <h3 className="text-base font-semibold text-ink">{task.title}</h3>
+
+      {/* Machine-ish signal row: status, priority, assignee. */}
+      <div className="mono mt-3 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-widest">
+        <span className="flex items-center gap-1.5 border border-line px-1.5 py-0.5">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: statusColor(task.status) }} />
+          {STATUS_UI[task.status].label}
+        </span>
+        <span className="border px-1.5 py-0.5" style={{ borderColor: PRIORITY_COLORS[task.priority], color: PRIORITY_COLORS[task.priority] }}>
+          {task.priority}
+        </span>
+        <span className="border border-line px-1.5 py-0.5 text-ink-soft">
+          {agent ? agent.name : "unassigned"}
+        </span>
+        <span className="ml-auto text-ink-soft normal-case tracking-normal">updated {relative(task.updated_at)} ago</span>
+      </div>
+
+      {task.description && (
+        <DetailSection label="Description">
+          <p className="whitespace-pre-wrap text-sm text-ink">{task.description}</p>
+        </DetailSection>
+      )}
+
+      {task.pr_url && (
+        <DetailSection label="Pull request">
+          <a href={task.pr_url} target="_blank" rel="noopener noreferrer" className="mono flex items-center gap-1 text-[12px] text-blue hover:underline">
+            <GitPullRequest size={12} /> {task.pr_url}
+          </a>
+        </DetailSection>
+      )}
+
+      {task.status === "in_review" && (
+        <DetailSection label="Review request">
+          {task.review_reason && <p className="text-[13px] italic text-ink">{task.review_reason}</p>}
+          {task.review_options && task.review_options.length > 0 && (
+            <ul className="mt-2 grid gap-1">
+              {task.review_options.map((o) => (
+                <li key={o.id} className="clip-corner border border-line p-2 text-sm">
+                  <span className="font-medium">{o.label}</span>
+                  {o.detail && <span className="mono ml-1 block text-[11px] text-ink-soft">{o.detail}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DetailSection>
+      )}
+
+      {task.review_verdict && (
+        <DetailSection label="Verdict">
+          <p className="mono text-[12px] uppercase tracking-widest text-ink-soft">
+            {task.review_verdict}
+            {verdictOption && <span className="normal-case tracking-normal text-ink"> — {verdictOption.label}</span>}
+          </p>
+          {task.review_note && <p className="mt-1 text-[13px] text-ink">{task.review_note}</p>}
+        </DetailSection>
+      )}
+
+      {terminal && task.result && (
+        <DetailSection label="Result">
+          <p className={`mono whitespace-pre-wrap text-[12px] ${failed ? "text-magenta" : "text-ink"}`}>{task.result}</p>
+        </DetailSection>
+      )}
+
+      <div className="mt-5 flex gap-2">
+        <button type="button" onClick={onEdit} className="bg-orange px-4 py-2 text-sm font-medium text-paper">Edit</button>
+        <button type="button" onClick={onDelete} className="border border-line px-4 py-2 text-sm text-magenta">Delete</button>
+        <button type="button" onClick={onClose} className="ml-auto border border-line px-4 py-2 text-sm">Close</button>
+      </div>
+    </div>
+  );
+}
+
+/** A labeled block in the task-detail read view (mono uppercase caption + body). */
+function DetailSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-4">
+      <div className="mono text-[10px] uppercase tracking-widest text-ink-soft">{label}</div>
+      <div className="mt-1">{children}</div>
     </div>
   );
 }
