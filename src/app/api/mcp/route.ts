@@ -9,6 +9,7 @@ import {
   submitResult,
   createSubtask,
   listAgents,
+  requestReview,
   type AgentContext,
 } from "@/lib/agent-db";
 import { AgentError } from "@/lib/agent-errors";
@@ -16,13 +17,14 @@ import { STATUSES } from "@/lib/task-status";
 
 // ───────────────────────────────────────────────────────────────────────────
 // AgentBoard v1 MCP server — the agent plane (design.md "MCP server"; DECISIONS
-// 1A/D12/3A). Five tools, authenticated per-call by a per-agent bearer key:
+// 1A/D12/3A). Six tools, authenticated per-call by a per-agent bearer key:
 //
 //   list_my_tasks(status?, parent_task_id?)  — the agent's own tasks / subtree
 //   update_task_status(task_id, status, note?)
 //   submit_result(task_id, output, status?)
 //   create_subtask(parent_task_id, title, description?, assignee_agent_id?)  — decompose a project
 //   list_agents()  — active workspace agents, for delegating a subtask
+//   request_review(task_id, reason, options?)  — park a task for a human decision (approval loop)
 //
 // Auth: withMcpAuth verifies the bearer, resolves (agentId, workspaceId) via the
 // confined service-role module, and carries it in authInfo.extra. Every tool
@@ -44,10 +46,10 @@ const SERVER_INSTRUCTIONS = `You are connected to AgentBoard, a task board your 
 Keep your assigned tasks up to date as you work — your manager is watching the board:
 - Call list_my_tasks to see what's assigned to you (optionally filter by status, or by parent_task_id to see a project's subtasks).
 - When you START a task, move it to in_progress (update_task_status).
-- If you've been assigned a PROJECT, break it into tasks with create_subtask (call list_agents first if you want to delegate a subtask to another agent; otherwise it's assigned to you). Then work each task. You can read your whole project's progress with list_my_tasks(parent_task_id=<project id>), including tasks you delegated.
+- Whenever you're assigned a PROJECT (a top-level task, kind 'project'), your FIRST step is to break it into concrete tasks with create_subtask — do this before starting the work, every time, so your manager sees the plan on the board. Read the project's \`spec\` field first if it has one — that's the full brief (BRD / spec / design doc) and the context you should decompose against; \`spec\` is null when no brief was provided. Create one subtask per meaningful unit of work; call list_agents first if you want to delegate a subtask to another agent (otherwise it's assigned to you). Only after the tasks exist do you start working them. Read the project's progress any time with list_my_tasks(parent_task_id=<project id>), including tasks you delegated.
 - Tasks that don't depend on each other can be worked in PARALLEL — move each to in_progress when you actually start it and update each one independently, so the board reflects everything in flight at once. How you parallelize (internal subagents, worktrees, separate threads) is up to your runtime; AgentBoard only needs each task's status kept current.
-- When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work).
-- If you need a human to review before continuing, set status to in_review.
+- When you FINISH, call submit_result with your output, and set status to done (or failed if it didn't work). If your work opened a pull request, pass its URL as pr_url so it shows on the review card — but do NOT mark a PR-raised task done yourself: submit your result and leave the task in review for your manager to close after the PR is merged (marking it done is rejected while a PR is attached). A task only becomes done once the human closes it post-merge; failed is still yours to set if the work didn't pan out. Before you raise that PR, ALWAYS sync with the default branch first — fetch the latest main and merge (or rebase) it into your branch, resolve any conflicts, and re-run the build/tests — so the PR is conflict-free and green. A PR that conflicts with main isn't done.
+- If you need a human decision before continuing, call request_review with a clear reason (and options if there are choices to pick between). Keep polling list_my_tasks: when the task leaves in_review you'll see the verdict (approved & continue → resume with the chosen option/note; approved & closed → the human marked it done; rejected → stop). Once you've raised a review you cannot mark the task done yourself — a human closes it.
 Update promptly and honestly — a stale or wrong status misleads the person relying on this board.`;
 
 /** Pull the resolved AgentContext out of the MCP auth info. */
@@ -75,7 +77,7 @@ const baseHandler = createMcpHandler(
   (server) => {
     server.tool(
       "list_my_tasks",
-      "List the tasks assigned to the calling agent. Optionally filter by status, and/or by parent_task_id to read a project's subtasks.",
+      "List the tasks assigned to the calling agent. Optionally filter by status, and/or by parent_task_id to read a project's subtasks. A project (kind 'project') may carry a `spec` field — the full brief (BRD / spec / design doc) for the work; read it before decomposing the project. `spec` is null when no brief was provided.",
       {
         status: STATUS_ENUM.optional().describe("Filter to this status if given"),
         parent_task_id: z
@@ -157,17 +159,42 @@ const baseHandler = createMcpHandler(
 
     server.tool(
       "submit_result",
-      "Submit a result for an in-progress task; optionally also move it to a terminal status (done/failed).",
+      "Submit a result for an in-progress task; optionally also move it to a terminal status (done/failed). If you raised a pull request, pass its URL as pr_url so it shows on the Needs-Review card — but do NOT set status to done: a task with a pull request can't be marked done by you. Leave it for your manager to close after the PR is merged (submit your result and, if anything, move it to in_review). You may still set failed if the work didn't pan out.",
       {
         task_id: z.string().min(1).describe("The task id (must be assigned to you)"),
         output: z.string().describe("The result payload (max 256 KB)"),
         status: STATUS_ENUM.optional().describe("Optional terminal status to set (done/failed)"),
+        pr_url: z.string().url().optional().describe("Optional GitHub pull-request URL to surface on the task's review card"),
       },
-      async ({ task_id, output, status }, extra) => {
+      async ({ task_id, output, status, pr_url }, extra) => {
         try {
           const ctx = ctxFrom(extra);
           await touchLastSeen(ctx);
-          const task = await submitResult(ctx, task_id, output, status);
+          const task = await submitResult(ctx, task_id, output, status, pr_url);
+          return ok({ task });
+        } catch (err) {
+          return toolError(err);
+        }
+      }
+    );
+
+    server.tool(
+      "request_review",
+      "Pause a task for a human decision. Moves your in_progress task to in_review with a required reason (why you need the human) and optional options for them to choose between. Poll list_my_tasks for the verdict; you cannot mark a reviewed task done yourself — a human closes it.",
+      {
+        task_id: z.string().min(1).describe("The task id (must be assigned to you and in_progress)"),
+        reason: z.string().min(1).max(2000).describe("Why you need a human decision"),
+        options: z
+          .array(z.object({ id: z.string(), label: z.string().max(200), detail: z.string().optional() }))
+          .max(10)
+          .optional()
+          .describe("Optional choices for the human to pick between"),
+      },
+      async ({ task_id, reason, options }, extra) => {
+        try {
+          const ctx = ctxFrom(extra);
+          await touchLastSeen(ctx);
+          const task = await requestReview(ctx, task_id, reason, options ?? null);
           return ok({ task });
         } catch (err) {
           return toolError(err);

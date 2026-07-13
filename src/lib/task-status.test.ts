@@ -5,7 +5,9 @@ import {
   isStatus,
   isTerminal,
   canTransition,
+  agentCanTransition,
   allowedTransitions,
+  prBlocksAgentDone,
   INITIAL_STATUS,
 } from "./task-status";
 
@@ -92,6 +94,52 @@ describe("task-status: canTransition — exhaustive matrix", () => {
     expect(canTransition("in_review", "failed")).toBe(true);
     expect(canTransition("in_review", "in_review")).toBe(false);
     expect(canTransition("in_review", "todo")).toBe(false);
+  });
+});
+
+describe("task-status: agentCanTransition (approval loop AL4b)", () => {
+  it("in_review can go to in_progress, done, failed (human-plane canTransition)", () => {
+    expect(canTransition("in_review", "in_progress")).toBe(true);
+    expect(canTransition("in_review", "done")).toBe(true);
+    expect(canTransition("in_review", "failed")).toBe(true);
+  });
+
+  it("agent plane CANNOT drive any move out of in_review (human-only, AL4b)", () => {
+    expect(agentCanTransition("in_review", "done")).toBe(false);
+    expect(agentCanTransition("in_review", "in_progress")).toBe(false);
+    expect(agentCanTransition("in_review", "failed")).toBe(false);
+  });
+
+  it("agent plane keeps every non-in_review move that canTransition allows", () => {
+    for (const from of STATUSES) {
+      if (from === "in_review") continue;
+      for (const to of STATUSES) {
+        expect(agentCanTransition(from, to)).toBe(canTransition(from, to));
+      }
+    }
+  });
+});
+
+describe("task-status: prBlocksAgentDone (PR-raised task can't be self-marked done)", () => {
+  it("blocks a move to done when the task has a PR", () => {
+    expect(prBlocksAgentDone("done", true)).toBe(true);
+  });
+
+  it("allows a move to done when there is no PR", () => {
+    expect(prBlocksAgentDone("done", false)).toBe(false);
+  });
+
+  it("never blocks failed — a PR-raised task can still fail", () => {
+    expect(prBlocksAgentDone("failed", true)).toBe(false);
+    expect(prBlocksAgentDone("failed", false)).toBe(false);
+  });
+
+  it("never blocks non-done moves regardless of PR", () => {
+    for (const to of STATUSES) {
+      if (to === "done") continue;
+      expect(prBlocksAgentDone(to, true)).toBe(false);
+      expect(prBlocksAgentDone(to, false)).toBe(false);
+    }
   });
 });
 

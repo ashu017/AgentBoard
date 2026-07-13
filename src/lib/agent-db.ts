@@ -6,7 +6,8 @@ import {
   type TaskStatus,
   isStatus,
   isTerminal,
-  canTransition,
+  agentCanTransition,
+  prBlocksAgentDone,
 } from "@/lib/task-status";
 import {
   AgentError,
@@ -51,8 +52,18 @@ export interface TaskRow {
   kind: "project" | "task";
   title: string;
   description: string | null;
+  /** Full brief (BRD/spec/design doc) on a project; null when none provided or on
+   * a leaf task. The context an agent reads before decomposing (D-PROJECT-SPEC). */
+  spec: string | null;
   status: TaskStatus;
+  priority: "high" | "medium" | "low";
+  pr_url: string | null;
   result: string | null;
+  review_reason: string | null;
+  review_options: unknown | null;
+  review_verdict: "approved" | "rejected" | null;
+  review_selected_option: string | null;
+  review_note: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -259,10 +270,12 @@ export async function submitResult(
   ctx: AgentContext,
   taskId: string,
   output: string,
-  status?: string
+  status?: string,
+  prUrl?: string
 ): Promise<TaskRow> {
   if (typeof output !== "string") throw badInput("output must be a string");
   if (Buffer.byteLength(output, "utf8") > MAX_RESULT_BYTES) throw tooLarge();
+  if (prUrl !== undefined && typeof prUrl !== "string") throw badInput("pr_url must be a string");
 
   const task = await getScopedTask(ctx, taskId);
   if (task.status !== "in_progress") {
@@ -270,10 +283,31 @@ export async function submitResult(
     throw illegalTransition("submit_result is only valid on an in_progress task");
   }
 
+  // Attach the PR link if given. getScopedTask above already confirmed the task
+  // is in the agent's scope (foreign/absent → 404); this update repeats the same
+  // (workspace_id, assigned_agent_id, id) filter so it can only touch that row.
+  // Written before the transition so the link is present the moment a
+  // Needs-Review card renders (0014, D-BOARD-REDESIGN).
+  if (prUrl) {
+    const { error: prErr } = await db()
+      .from("tasks")
+      .update({ pr_url: prUrl })
+      .eq("workspace_id", ctx.workspaceId)
+      .eq("assigned_agent_id", ctx.agentId)
+      .eq("id", taskId);
+    if (prErr) throw badInput(prErr.message);
+  }
+
   if (status !== undefined) {
     if (!isStatus(status)) throw badInput(`Unknown status: ${status}`);
     if (!isTerminal(status)) throw badInput("submit_result status must be terminal (done/failed)");
-    return applyTransition(ctx, task, status, { setResult: true, result: output });
+    // Pass the incoming pr_url so the PR-done gate (D-PR-DONE) sees a PR being set
+    // in THIS call, not only one already on the row.
+    return applyTransition(ctx, task, status, {
+      setResult: true,
+      result: output,
+      incomingPrUrl: prUrl ?? null,
+    });
   }
 
   // No status change: write the result in-place (still atomic w/ its event).
@@ -282,6 +316,53 @@ export async function submitResult(
     result: output,
     sameStatus: true,
   });
+}
+
+/** Max review reason length (mirrors the note cap). */
+const MAX_REVIEW_REASON = 2000;
+
+export interface ReviewOption { id: string; label: string; detail?: string }
+
+/**
+ * request_review(task_id, reason, options?) — park an in_progress task in in_review
+ * with a structured request (AL-C). reason required ≤2000; options optional, ≤10,
+ * each label ≤200. Not in_progress → 409; foreign/absent task → 404; bad input → 400.
+ * The verdict is delivered poll-based: the agent keeps calling list_my_tasks and
+ * sees review_verdict/review_note once a human resolves it. The agent cannot move
+ * the task out of in_review itself (AL4b) — see agentCanTransition.
+ */
+export async function requestReview(
+  ctx: AgentContext,
+  taskId: string,
+  reason: string,
+  options?: ReviewOption[] | null
+): Promise<TaskRow> {
+  if (!taskId) throw badInput("task_id required");
+  if (typeof reason !== "string" || !reason.trim()) throw badInput("reason required");
+  if (reason.length > MAX_REVIEW_REASON) throw badInput("reason too long (max 2000)");
+  if (options != null) {
+    if (!Array.isArray(options) || options.length > 10) throw badInput("options must be an array of ≤10");
+    for (const o of options) {
+      if (!o || typeof o.id !== "string" || typeof o.label !== "string" || o.label.length > 200) {
+        throw badInput("each option needs id + label (label ≤200)");
+      }
+    }
+  }
+
+  const { data, error } = await db().rpc("request_review", {
+    p_workspace_id: ctx.workspaceId,
+    p_agent_id: ctx.agentId,
+    p_task_id: taskId,
+    p_reason: reason.trim(),
+    p_options: options ?? null,
+  });
+  if (error) throw badInput(error.message);
+  const res = data as
+    | { ok: true; task: TaskRow }
+    | { ok: false; reason: "not_found" | "not_in_progress" };
+  if (res.ok) return res.task;
+  if (res.reason === "not_found") throw notFound();
+  throw illegalTransition("request_review is only valid on an in_progress task");
 }
 
 export interface WorkspaceAgent {
@@ -316,6 +397,9 @@ interface ApplyOpts {
   result?: string;
   /** result-only write: skip the canTransition check (status unchanged). */
   sameStatus?: boolean;
+  /** A PR URL being set in the SAME call (submit_result). Combined with the row's
+   * existing pr_url for the PR-done gate (D-PR-DONE). */
+  incomingPrUrl?: string | null;
 }
 
 async function applyTransition(
@@ -325,8 +409,20 @@ async function applyTransition(
   opts: ApplyOpts
 ): Promise<TaskRow> {
   const from = task.status;
-  if (!opts.sameStatus && !canTransition(from, to)) {
+  // Agent-plane legality (AL4b): stricter than canTransition — the agent can
+  // never drive a task OUT of in_review (a review it raised is human-resolved).
+  if (!opts.sameStatus && !agentCanTransition(from, to)) {
     throw illegalTransition(`Cannot move ${from} → ${to}`);
+  }
+  // PR review gate (D-PR-DONE): an agent may not self-mark a task `done` while it
+  // carries a PR — on the row already, or being set in this same submit_result
+  // call. The single funnel here covers BOTH submit_result and update_task_status.
+  // The task must stay reviewable for the human to close after the PR is merged.
+  const hasPrUrl = Boolean(task.pr_url || opts.incomingPrUrl);
+  if (prBlocksAgentDone(to, hasPrUrl)) {
+    throw illegalTransition(
+      "This task has a pull request — leave it in review for your manager to close after the PR is merged. You cannot mark a PR-raised task done yourself."
+    );
   }
 
   const { data, error } = await db().rpc("agent_apply_transition", {

@@ -2,6 +2,7 @@
 import { useActionState, useState } from "react";
 import { createAgentAction, type ActionResult } from "@/app/actions";
 import type { CreatedAgent } from "@/lib/manager-actions";
+import type { Idea } from "@/lib/ideas";
 import { Modal } from "@/app/_components/Modal";
 
 // Three-step agent onboarding wizard, each step its own modal:
@@ -14,7 +15,17 @@ import { Modal } from "@/app/_components/Modal";
 //                      button to step 2 in case you forgot to copy the key.
 // Mount this only while active; it starts on step 1 and calls onClose when the
 // user cancels step 1 or finishes step 3.
-export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; onClose: () => void }) {
+export function AddAgentFlow({
+  mcpEndpoint,
+  ideas = [],
+  defaultIdeaId,
+  onClose,
+}: {
+  mcpEndpoint: string;
+  ideas?: Idea[];
+  defaultIdeaId?: string;
+  onClose: () => void;
+}) {
   const [createState, formAction, creating] = useActionState<ActionResult<CreatedAgent> | null, FormData>(
     createAgentAction,
     null
@@ -28,11 +39,22 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
   return (
     <>
       {/* Step 1 — name + description */}
-      <Modal open={phase === "form"} onClose={onClose} title="Add agent" systemTag="SYS:: NEW AGENT — STEP 1 OF 3" blurBackdrop>
+      <Modal open={phase === "form"} onClose={onClose} title="Add agent" systemTag="SYS:: NEW AGENT — STEP 1 OF 3" variant="figma">
         <form action={formAction}>
           <div className="grid gap-3">
             <input name="name" required placeholder="Agent name" className="border border-line bg-paper px-3 py-2 text-sm" />
             <input name="description" placeholder="Description (optional)" className="border border-line bg-paper px-3 py-2 text-sm" />
+            <fieldset className="mt-1">
+              <legend className="mono text-[11px] uppercase tracking-widest text-ink-soft">Ideas this agent works on</legend>
+              <div className="mt-1 flex flex-col gap-1">
+                {ideas.map((i) => (
+                  <label key={i.id} className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="ideaIds" value={i.id} defaultChecked={i.id === defaultIdeaId} />
+                    {i.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
           {createState && !createState.ok && <p className="mt-2 text-sm text-magenta">{createState.error}</p>}
           <div className="mt-4 flex gap-2">
@@ -53,7 +75,7 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
         title={created ? `Key for ${created.name}` : "Key"}
         systemTag="SYS:: KEY — SHOWN ONCE — STEP 2 OF 3"
         closeOnBackdrop={false}
-        blurBackdrop
+        variant="figma"
         size="lg"
       >
         {created && (
@@ -68,7 +90,7 @@ export function AddAgentFlow({ mcpEndpoint, onClose }: { mcpEndpoint: string; on
         title="Tell your agent what to do"
         systemTag="SYS:: INSTRUCTIONS — STEP 3 OF 3"
         closeOnBackdrop={false}
-        blurBackdrop
+        variant="figma"
         size="lg"
       >
         <Instructions onBack={() => setStep("key")} onDone={onClose} />
@@ -151,10 +173,12 @@ function Instructions({ onBack, onDone }: { onBack: () => void; onDone: () => vo
         agent&apos;s instructions, add something like:
       </p>
       <blockquote className="mono mt-3 border-l-2 border-orange bg-paper px-3 py-2 text-[12px] leading-relaxed text-ink">
-        You&apos;re an AgentBoard worker. Use <code>list_my_tasks</code> to find your work, mark each{" "}
-        <code>in_progress</code> when you start it, work independent tasks in parallel,{" "}
-        <code>create_subtask</code> to break a project into tasks (and <code>list_agents</code> to hand
-        one off), and <code>submit_result</code> with <code>done</code>/<code>failed</code> as each finishes.
+        You&apos;re an AgentBoard worker. Use <code>list_my_tasks</code> to find your work. When
+        assigned a project, first <code>create_subtask</code> to break it into tasks (use{" "}
+        <code>list_agents</code> to hand one off). Mark each <code>in_progress</code> when you start,
+        work independent tasks in parallel, call <code>request_review</code> when you need a human
+        decision (you can offer options), and <code>submit_result</code> with{" "}
+        <code>done</code>/<code>failed</code> as each finishes.
       </blockquote>
 
       <div className="mt-5 flex items-center gap-2">

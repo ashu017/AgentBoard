@@ -439,10 +439,12 @@ resolution. `done`/`failed` terminal (exit → `409`). The enum + transition map
 shared `lib/task-status.ts` imported by the DB `CHECK`, MCP validators, UI, and tests.
 **`in_review` added 2026-06-29 (Level A — status only):** an agent can park a task
 awaiting human approval; it's visible on the board. This is the approval-gate primitive
-from POSITION (a moat piece). The resolution loop (human Approve/Reject + an MCP tool for
-the agent to read the verdict and resume) is **Level B**, deferred as the next deliberate
-feature — it's the first human write-action on the board, so it gets real design, not a
-mid-spike bolt-on. Migration `0002_add_in_review.sql` widens the live CHECK constraint.
+from POSITION (a moat piece). **Level B — the approval loop — is now BUILT (2026-07-05,
+see APPROVAL LOOP AL1–AL8 below):** the human resolves via approve-continue / approve-close
+/ reject carrying a reason+verdict, the agent raises reviews with `request_review` and reads
+the verdict poll-based via `list_my_tasks`, and the agent is blocked from moving a task out
+of `in_review` itself (AL4b — the human closes it). Migration `0002_add_in_review.sql` widens
+the live CHECK constraint.
 **Why:** Cut from a larger set to the minimum the loop needs. Single source prevents the
 classic drift where the API allows a move the UI can't render (DRY).
 
@@ -455,7 +457,13 @@ classic drift where the API allows a move the UI can't render (DRY).
 payload size and board render.
 
 ### D-INREVIEW-INTERIM — `in_review` can be resolved from the board (interim, pre-approval-loop)
-**Status:** Active · 2026-07-04 · **Interim — to be formalized by the approval loop (feat/approval-loop, AL4b)**
+**Status:** Superseded 2026-07-05 by APPROVAL LOOP (AL1–AL8 below) · originally 2026-07-04 (interim)
+**Superseded note:** the fuller model shipped. The `in_review → {done, in_progress, failed}`
+transitions this entry opened remain in the SSOT (they are the human-plane moves), but the
+human now resolves through the structured verdict path (`resolveReview` → `resolve_review` RPC,
+carrying reason/verdict/note/selected-option), and the AGENT plane is blocked from any move out
+of `in_review` via `agentCanTransition` (AL4b). The board's raw drag-to-resolve still works for
+the human via `moveTask`. Original interim reasoning preserved below.
 `in_review` now has legal outgoing transitions in the SSOT: `in_review → {done, in_progress,
 failed}`. This unblocks the board's In Review column — a reviewed card can be dragged to Done
 (approved/merged), back to In Progress (needs changes), or Failed. Previously `in_review` was a
@@ -466,6 +474,47 @@ minimal human-plane unblock. The approval loop (spec 2026-07-01-approval-loop-de
 supersede this with the fuller model: a human verdict (approve-continue / approve-close /
 reject) carrying a reason, and the agent plane blocked from self-closing a review (AL4b). Until
 then, any legal transition out of `in_review` is allowed to whoever can drive the board.
+
+### APPROVAL LOOP (Level B) — AL1–AL8 + AL4b
+**Status:** Active · Built 2026-07-05 · Spec: `docs/superpowers/specs/2026-07-01-approval-loop-design.md`
+The human-in-the-loop approval loop, the moat piece deferred at D-STATUS. An agent parks a task
+for a human decision; the manager resolves it from the board; the agent resumes by polling. This
+supersedes D-INREVIEW-INTERIM with the structured model. Satisfies board task #6 (an agent that
+raised a review can't self-mark `done`; only a human closes it) via AL4b.
+
+- **AL1 — Unified in-review surface, split by shape.** A review with no options resolves *inline*
+  on the card (three verdict buttons); a review carrying options opens a modal with a radio list +
+  optional note. One concept, two renderings — no separate "approvals inbox" in v1.
+- **AL2 — `request_review(task_id, reason, options?)` is a distinct MCP tool**, not an overload of
+  `update_task_status`. Parking for review is semantically different from a status move and carries
+  structured payload (reason + optional options). It's the 6th agent tool.
+- **AL3 — Verdict delivery is poll-based** via the existing `list_my_tasks`: the `review_*` fields
+  ride on the returned task rows, so the agent reads the verdict (approved/rejected, selected option,
+  note) on its next poll. No new "get verdict" tool, no push channel to the agent in v1.
+- **AL4 — Two-plane split.** Agent plane: `request_review` (atomic RPC, service-role, scoped to
+  (workspace, agent)). Human plane: `resolveReview` (approve_continue → in_progress, approve_close →
+  done, reject → failed) via the `resolve_review` RPC under the user's RLS session.
+- **AL4b — The agent can NEVER move a task out of `in_review`.** Enforced by `agentCanTransition`
+  in the SSOT (returns false for any `in_review → *`), used by the agent-plane `applyTransition`.
+  Only the human `resolveReview` resolves a review. This is board task #6.
+- **AL5 — `request_review` is only valid on an `in_progress` task** (→ 409 otherwise; foreign/absent
+  → 404; bad input → 400), mirroring `submit_result`. One open review per task at a time (a task is
+  either in_review or it isn't).
+- **AL6 — Atomic write + event.** Both `request_review` and `resolve_review` do the task-write and
+  the `task_events` append (via the single `append_task_event` helper) in one txn, matching the
+  `agent_apply_transition` / `create_subtask` pattern. A review-request logs `in_progress→in_review`
+  by the agent; a resolution logs `in_review→<to>` by the user.
+- **AL7 — Input caps.** reason ≤ 2000 chars (mirrors the note cap); options optional, ≤ 10, each
+  label ≤ 200 chars. Validated in `agent-db.requestReview` and mirrored in the MCP tool's Zod schema.
+- **AL8 — Columns on `tasks`, not a side table.** `review_reason`, `review_options` (jsonb),
+  `review_verdict` (CHECK approved/rejected), `review_selected_option`, `review_note` (migration
+  `0011_approval_loop.sql`). A task carries at most one live review, so columns beat a 1:1 table.
+**Grant note:** `resolve_review` is granted to `authenticated` (the manager UI calls it under RLS,
+SECURITY INVOKER so the inner UPDATE stays workspace-scoped); `request_review` is revoked from
+anon/authenticated (agent plane, service-role only). Both pin `search_path`.
+**Why:** The approval loop is the differentiator (POSITION) and the first real human write-action,
+so it got deliberate design: a distinct tool, poll-based verdicts (no new transport), and a
+DB-independent agent-side lock (AL4b) so an agent can't rubber-stamp its own work.
 
 ### D-PARALLEL — Agents work independent tasks in parallel; guidance is mechanism-agnostic
 **Status:** Active · 2026-07-04
@@ -485,6 +534,56 @@ status); let each runtime choose the *mechanism*. The Claude-Code build-session 
 that *does* name worktrees lives in `CLAUDE.md` ("Working in parallel"), scoped to our own
 runtime — restores the "internal subagents" spirit that the first-class-projects rewrite
 dropped from the instructions.
+
+### D-PROJECT-DECOMPOSE — Assigned a project → create tasks first, every time
+**Status:** Active · 2026-07-05
+Both behavioral nudge points (`SERVER_INSTRUCTIONS` in route.ts + the onboarding wizard's
+"tell your agent" sample) now state that when an agent is assigned a PROJECT (a top-level
+`kind='project'` task), its **first** step is to `create_subtask` the project into concrete
+tasks — before starting any work — so the manager sees the plan on the board. Previously the
+guidance was softer ("if you've been assigned a project, break it into tasks"); this makes
+task-creation the required opening move for any assigned project.
+**Why:** the north-star loop is the manager watching planned work move on the board. An agent
+that silently works a project without decomposing it leaves the board empty until it finishes
+— defeating the live-visibility point. Mechanism-agnostic like D-PARALLEL: it's guidance to
+any MCP client, not enforced in code (agents *can* still work without decomposing; the
+instruction steers them). Enforcement would need a product rule; deferred.
+
+### D-PR-SYNC — Sync with main before raising a PR
+**Status:** Active · 2026-07-08
+`SERVER_INSTRUCTIONS` (route.ts) now tells agents: before raising a pull request, ALWAYS
+fetch the latest default branch and merge/rebase it into the working branch, resolve conflicts,
+and re-run build/tests — so the PR is conflict-free and green. "A PR that conflicts with main
+isn't done."
+**Why:** surfaced concretely by the Ideas build (D-IDEAS) — while it was in flight, two PRs
+(#21, #22) merged to main and touched the same files (BOARD_COLS, createProject/createAgent,
+seed helpers) plus collided on a migration number (both used 0015). The branch raised its PR
+against a moved main and hit real conflicts. Baking the sync-first step into the agent
+guidance makes conflict-checking part of "finishing," not an afterthought. Mechanism-agnostic
+like D-PARALLEL / D-PROJECT-DECOMPOSE — guidance to any MCP client, not code-enforced (CI
+branch-protection would be the enforcement layer; deferred).
+
+### D-PR-DONE — A PR-raised task can't be self-marked `done` by the agent (stays in review)
+**Status:** Active · 2026-07-09
+When an agent attempts to move a task to `done` (via `submit_result(status='done')` OR
+`update_task_status('done')`) AND that task carries a pull-request URL — either already on the
+row, or being set in the same `submit_result` call — the move is rejected with `409`
+(illegalTransition): *"This task has a pull request — leave it in review for your manager to
+close after the PR is merged."* `failed` is still allowed (a PR-raised task can still fail);
+`in_review` and every other non-done move is unaffected; a task with no `pr_url` is completely
+unaffected (existing behavior preserved).
+**How:** the rule is a pure predicate `prBlocksAgentDone(to, hasPrUrl)` in the SSOT
+(`task-status.ts`), enforced in the single agent-plane funnel `applyTransition` in the confined
+`agent-db.ts` — so it covers BOTH mutation paths (and the "submit with pr_url then update to
+done" two-step) in one place, per the confinement convention. `submitResult` forwards the
+incoming `prUrl` so a PR set in the same call counts, not only one already persisted. The
+`submit_result` tool description + `SERVER_INSTRUCTIONS` tell agents to submit and leave the
+task in review rather than self-closing it.
+**Why:** raising a PR is not shipping — the human reviews and merges it, then closes the task.
+Letting an agent jump straight to `done` on `submit_result(status='done', pr_url=…)` skipped
+that human review gate. This complements AL4b (an agent can't self-close a review it raised):
+here the trigger is a PR link rather than an explicit `request_review`, and the enforcement is
+a done-specific gate rather than a blanket in_review lock.
 
 ### D9-RT — Realtime-RLS delivery is a prove-first gate
 **Status:** Active · 2026-06-26 · **PROVEN 2026-06-29 (S0 Gate B PASS, local)**
@@ -788,6 +887,176 @@ tests green. **Open:** real OG image (TODO in metadata); `SITE_ORIGIN` falls bac
 `https://agentboard.dev` when `NEXT_PUBLIC_APP_ORIGIN` unset — confirm the public domain;
 copy worth a seo-optimizer audit pass before launch.
 
+### D-WAITLIST — Pre-launch demand capture on the landing page
+**Status:** ✅ **BUILT 2026-07-05.** Directly targets the **Demand** open risk below — the
+landing page's only CTA was "Sign in with GitHub", a commitment step, not an interest
+signal. Added an email capture ("Join the waitlist") in the hero, under the OAuth CTA, for
+visitors not ready to authenticate.
+**Data:** new `public.waitlist_signups` (email UNIQUE + shape CHECK, `source`, `created_at`);
+migration `0013_waitlist.sql`. RLS is the **inverse** of tasks — `anon`+`authenticated` can
+INSERT, and there is deliberately **no SELECT policy**, so the public/anon key can write but
+never read the list back; the owner reads counts via the Supabase dashboard / service-role.
+Not added to the `supabase_realtime` publication (no live needs).
+**Capture path:** client-side insert from `WaitlistForm.tsx` via the browser Supabase client,
+so the landing page stays `force-static` (no server action → no dynamic boundary). A unique
+violation (23505) is surfaced as success ("already on the list"), not an error. A hidden
+honeypot field (`company_website`) drops bot submissions in app code — cheap spam guard, no
+captcha friction. No admin UI in v1 (YAGNI — read the count in the dashboard).
+**Why not a server action + service-role:** would force a dynamic boundary on the static
+marketing page for no security gain; insert-only RLS already makes a client-side write safe.
+
+### D-LANDING-FIGMA — Landing page rebuilt to the Figma operator-console design
+**Status:** ✅ **BUILT 2026-07-06.** Rebuilt the landing page to match the Figma Make
+reference (`figma.com/make/9DyXcOrZRgAlDQvODiot2K`, the same "Personal tasks dashboard" that
+DECISIONS 4A already models the app on). Heavier terminal aesthetic than the prior page:
+uppercase, orange-tinted grid, clip-corner cards, `motion/react` scroll/loop animations.
+**Sections:** sticky nav → hero (beta badge, "YOUR AI AGENTS, UNDER COMMAND", terminal
+waitlist form, animated kanban demo) → stats bar (animated counters) → 4-step how-it-works →
+3 animated feature cards (illustrative agent roster, human-in-the-loop review, live feed) →
+FAQ → final-CTA band (second waitlist) → terminal footer.
+**Fonts (app-wide):** Russo One (display) + Space Mono (body/mono) via `next/font`, replacing
+Geist as the primary brand type — `globals.css` `@theme` now maps `--font-sans`/`--font-mono`
+to Space Mono and adds `--font-display`. This changes the board/app type too (intentional —
+one brand). Geist vars retained as fallbacks.
+**Deps added:** `motion` (framer-motion) + `lucide-react` — the design's `AnimatePresence`/
+layout animations and icons; hand-rolling them in CSS would be lower fidelity.
+**Honest content (no false claims):** dropped the Figma's fabricated "1,847 teams on
+waitlist" counter and the PRICING nav link (AgentBoard is free/MIT); stats now describe real
+product shape (agent tools, MCP tools shipped, 100% open source, 0 per-seat fees); the agent
+roster is labelled illustrative, not a claimed built-in feature. `WaitlistForm` gained a
+`terminal` variant; the client-side insert + honeypot + 23505-as-success logic is unchanged.
+`/` still prerenders **static** (client `LandingView` for animations; SEO metadata + JSON-LD
++ FAQ stay server-rendered in `page.tsx`).
+**Superseded:** the 2026-07-05 hero (full-viewport split + `HeroBoardPreview`) — replaced by
+this design. `HeroBoardPreview`, `AboutSection`, `HowItWorks`, `AuthCta`, and the pixel-Pong
+`animated-hero-section` are now unimported (kept in-tree, tree-shaken out of the bundle).
+**⚠️ Open — SEO regression:** the removed `AboutSection` carried E-E-A-T "who/how/why" +
+"why not JIRA" authority copy now absent from the page. Fold that content into an About block
+in the new design (or restyle + re-mount `AboutSection`) before public launch; flagged, not
+yet done.
+
+### D-BOARD-REDESIGN — Board rebuilt to the Figma operator-console design
+**Status:** 🚧 **IN PROGRESS 2026-07-06.** Rebuilding the manager board (`/board`) to match
+the Figma "Personal tasks dashboard" reference (same file the landing page + DECISIONS 4A
+draw from): a full operator-console layout — top header (wordmark, awaiting-review badge,
+`+ New` menu), collapsible left sidebar (projects + agents), a middle project view (header
+stats + Todo / Running / Needs-Review / Done columns), and a right live-feed drawer hidden
+by default (opens from the header's awaiting-review count).
+**Foundation (this branch, `feat/board-redesign-foundation`):**
+- **Migration `0014_priority_pr_agent_meta.sql`** (applied live): `tasks.priority`
+  (high|medium|low, default medium, CHECKed) + `tasks.pr_url` (nullable GitHub PR link).
+  Both nullable/defaulted — no backfill; agent-plane code keeps working.
+- **Agent role/model + avatars: OUT of scope** (dropped at user request 2026-07-06). The
+  board shows agent name + live status (from `last_seen_at`) only. The `agents.role`/`model`
+  columns were added then immediately dropped in the same session — not used.
+- **Data layer wired:** `BOARD_COLS` + `BoardTask` + agent-db `TaskRow` carry priority/pr_url;
+  `createTask`/`createProject` (+ their server actions) take a priority arg; the MCP
+  `submit_result` tool gains an optional `pr_url` (agent sets it when raising a PR — written
+  via a scoped update, atomic-adjacent to the transition).
+**Sequencing (DECISIONS D-PARALLEL echo):** foundation-first, then the genuinely-independent
+leaf components (header / modals / sidebar / project-view / live-feed) fan out into parallel
+worktrees; a final pass removes superseded code (old `BoardClient` internals + the landing
+leftovers flagged in D-LANDING-FIGMA). Full design source: the Figma file above.
+**Landed (2026-07-06, `feat/board-redesign-foundation`):** `BoardClient` rewritten from the
+swimlane layout to the single-project layout; sections extracted to
+`src/app/board/_components/` (`Header`, `Sidebar`, `ProjectView`, `LiveFeed`, `board-ui`
+helpers). `page.tsx` + `BoardClient` props unchanged — the board still loads ALL projects+tasks;
+the sidebar lists every project and the middle shows the one selected (default: first
+non-Miscellaneous, else first). Preserved verbatim: the D9-RT realtime `setAuth`+refetch,
+the dataTransfer drag-drop (no async-state race), the inline yes/no + option-modal review loop,
+and all New/Edit/Delete modals (New Task/Project now carry the `priority` selector).
+Two adaptations worth recording:
+- **Filter bar dropped from the UI.** The old window/status/project `FilterBar` is gone — the
+  sidebar now IS the project picker, and the single-project view makes per-lane status filtering
+  moot. `BoardClient` still *receives* the `filters` prop (page.tsx unchanged) so server-side
+  windowing keeps working; it's just not surfaced as controls. Revisit if window/active filtering
+  is wanted back.
+- **`failed` has no column.** The 5th status renders inside the **Done** column with a loud
+  (magenta) card border rather than getting its own column, per the 4-column Figma layout —
+  kept visible, not hidden.
+- **Live feed = recent `task_events`.** The right drawer reads the 50 most recent `task_events`
+  via the browser supabase client (RLS-scoped, same client as the realtime refetch) and
+  re-reads whenever the tasks realtime subscription fires.
+**Standalone `/board/agents` page retired (2026-07-06).** Agent management now lives entirely
+in the board — create via `+ New → Agent`, and manage (edit / revoke / delete) by clicking an
+agent in the sidebar to open `AgentModal`. The dropped header nav had already orphaned the
+page (no in-UI link); deleting it removed `board/agents/{page,AgentsClient}.tsx` and, with it,
+the now-unused `Shell` + `GlassNav` (the board's `Header` replaced Shell's chrome). Agent
+server actions revalidate `/board` only (was `/board/agents`). Sole human route is now `/board`.
+
+### D-PROJECT-SPEC — Projects carry an optional `spec` brief, delivered to agents but hidden from the board
+**Date:** 2026-07-08. Full design: `docs/superpowers/specs/2026-07-08-project-spec-field-design.md`.
+
+A project (`kind='project'`) gains a **`spec`** field: long-form context — a BRD, spec doc,
+or design doc — that the assigned agent reads before decomposing the project. Migration
+`0015_project_spec.sql` adds `tasks.spec text` (nullable, no CHECK tied to `kind`).
+
+- **Text, not a link.** The brief is stored inline so the agent is *guaranteed* the full
+  context over the existing `list_my_tasks` read path. A URL could be un-fetchable or
+  auth-gated for an agent runtime, so the "agent has context" promise would fail silently
+  (consistent with D-STACK's self-contained rationale).
+- **Optional, but surfaced.** Nullable column (existing projects incl. Miscellaneous, and
+  every task, read back `spec = null` — no backfill). The New/Edit Project modals always
+  show a prominent "Spec / brief" textarea, so managers reach for it without it being a hard
+  requirement that would fight the empty-project-first workflow (P1) or need a backfill.
+- **Project-level only.** Child tasks inherit context by living under the project (a lead
+  reads the whole subtree, P6). Per-task and idea-level specs are out of scope (YAGNI; the
+  latter would couple to the in-flight ideas work).
+- **Delivered, not displayed.** `spec` rides `select("*")` in `scopedTasks()` /
+  `scopedProjectSubtree()`, so `list_my_tasks` returns it with no serialization change; the
+  tool description and `SERVER_INSTRUCTIONS` decompose step tell agents to read it first. It
+  is carried on `BoardTask` (to hydrate the Edit modal) but **never rendered** on cards or
+  lane headers — the board stays title + description only.
+
+### D-IDEAS — Ideas: a third hierarchy level (workspace → idea → project → task)
+**Status:** ✅ **BUILT 2026-07-08** (branch `feat/ideas-hierarchy-level`). Full spec +
+plan: `docs/superpowers/specs/2026-07-07-ideas-hierarchy-level-design.md`,
+`docs/superpowers/plans/2026-07-08-ideas-hierarchy-level.md`.
+**Why:** the manager runs several parallel bodies of work (AgentBoard, bloodonor.com, office);
+one flat board interleaves unrelated projects and agents. Ideas add a grouping level so you
+focus on one idea at a time AND get a cross-idea "what needs me anywhere?" overview — without
+breaking single-tenant (ideas live inside the one workspace; they are NOT tenants). Rejected:
+separate workspace-per-idea (DB enforces one workspace/user; also kills the cross-idea view)
+and plain tags (too weak for agent scoping).
+**Data (migrations 0015 + 0016, applied live):** new `ideas` table (id, workspace_id, name,
+archived_at) + `agent_ideas` join (an agent belongs to ≥1 idea; shared agents span several) +
+`tasks.idea_id` on project rows, guarded by CHECK `tasks_project_has_idea` (every kind=project
+row has an idea). 0015 backfills one default "AgentBoard" idea per workspace, reparents all
+existing projects, links all existing agents. 0016 re-scopes the Miscellaneous unique index
+from (workspace_id) → (workspace_id, idea_id) — Miscellaneous is now one-per-idea. Owner-scoped
+RLS mirrors the existing human-plane policies.
+**UX:** `/board` opens on the **all-ideas overview** (a card per idea with in-review/in-progress/
+done/PR roll-ups — the `rollUpByIdea` pure helper, unit-tested). A header **idea switcher**
+(dropdown: All ideas / each idea / + New idea) scopes the whole board — projects, agents
+(via `agent_ideas`), live feed — to the selected idea. Create-project/task forms carry the
+active `ideaId`; the agent create form has an idea multi-select.
+**Agent plane UNCHANGED (important):** no MCP contract change. An agent's key still resolves to
+(agentId, workspaceId) and `list_my_tasks` returns its own tasks — naturally idea-bounded
+because its tasks only exist under linked ideas. Idea membership is an **organizational**
+boundary in the human plane, NOT a security boundary — a workspace-scoped agent could in
+principle be assigned a task in any idea. Fine for single-tenant v1; revisit if ideas ever need
+hard isolation.
+**Verification:** tsc/lint/build clean; **111 tests pass** (incl. live-DB integration —
+seed helpers updated to satisfy the new CHECK, `rollUpByIdea` unit-tested); walked the live
+board (overview on open, switcher, + New idea → bloodonor.com appears on the overview).
+Built subagent-driven; the DB migrations (0015/0016) were human-approved via the board's own
+`request_review` loop (the migration-gating rule + dogfooding the approval flow).
+
+### D-STATUS-PALETTE — Board status hues matched to the Figma reference
+**Date:** 2026-07-09. The board status SSOT tokens in `globals.css` were matched to the Figma
+"Personal tasks dashboard" reference (same file the landing page + board draw from — see
+D-LANDING-FIGMA and 4A): **`--st-review` is now purple `#7c3aed`** (was goldenrod `#b8860b`)
+and **`--st-done` is now green `#059669`** (was olive `#5c7a4a`). Everything downstream
+(columns, dots, icons, sidebar, badges, live-feed accents) picks these up automatically via
+`statusColor()` / `var(--st-…)`; no per-layer color redefinition.
+**Design-principle relaxation (why this is recorded):** 4A + CLAUDE.md said "color = status
+signal only; Failed is the only loud color." Introducing saturated purple + green beyond
+Failed's magenta softens that. The guidance is **relaxed** to: *Failed is the only
+magenta/alarm color; the status hues (todo / in-progress / in-review / done) each carry
+their Figma signal color.* Color still means status, not decoration — it now just spans the
+full status set as the Figma reference intended, rather than reserving saturation for Failed
+alone.
+
 ### NEXT-2 — Recurring tasks
 **Status:** Flagged, not designed. Schedule/cron semantics on a project or task (likely a
 recurrence rule + a scheduler that clones a template on a cadence). To be designed
@@ -856,16 +1125,16 @@ dev-agent-invokes-skills vs separate agents, and whether these later become prod
 
 Multi-user workspaces / invites / roles · DB-enforced agent RLS (Appendix A) · pull/claim
 task pool · extra MCP tools (`get_task`, `add_comment`, `heartbeat`) · statuses
-`blocked`/`backlog` · **Level B approval loop** (human Approve/Reject on `in_review` + an
-MCP verdict-read tool so the agent resumes — the moat-defining human-in-the-loop gate; next
-deliberate feature after S0) · priorities/labels/due dates/comments · short-lived/
+`blocked`/`backlog` · priorities/labels/due dates/comments · short-lived/
 rotating agent tokens · published agent SDK · true mobile reflow · optimistic UI ·
 light+dark theming · rendered visual mockups (needs an OpenAI key; recommended first UI
 step) · per-key rate limiting (first follow-up; `last_seen_at` throttle blunts the
 runaway-agent write pressure for now).
 
 (`in_review` itself is no longer deferred — pulled into scope 2026-06-29 at Level A;
-see D-STATUS.)
+see D-STATUS. The **Level B approval loop** — human approve-continue/close/reject + agent
+`request_review` + poll-based verdict — is also no longer deferred: BUILT 2026-07-05, see
+APPROVAL LOOP AL1–AL8 above.)
 
 ## Open / unvalidated risks
 
@@ -883,6 +1152,9 @@ see D-STATUS.)
   the owner's agent.
 - **Demand:** "managers want to hand-assign tasks to agents on a board" is the core bet,
   still unproven. Worth a rough demo in front of a few agent-runners before heavy build.
+  **Partially mitigated 2026-07-05:** a waitlist email capture now lives on the landing hero
+  (D-WAITLIST) so pre-launch interest is measurable (signup count = demand signal) rather
+  than assumed. Still needs real traffic + a demo to validate.
 - **Moat durability (see POSITION):** the agent-native/MCP wedge is a head start, not yet
   defensible — an incumbent could ship an MCP server and copy it. The bet is that
   agent-shaped primitives + the control loop + OSS/self-host positioning compound into a

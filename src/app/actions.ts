@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import {
   createAgent as _createAgent,
+  updateAgent as _updateAgent,
   revokeAgent as _revokeAgent,
   deleteAgent as _deleteAgent,
   createTask as _createTask,
@@ -11,8 +12,13 @@ import {
   updateProject as _updateProject,
   deleteTask as _deleteTask,
   moveTask as _moveTask,
+  resolveReview as _resolveReview,
+  createIdea as _createIdea,
+  renameIdea as _renameIdea,
+  archiveIdea as _archiveIdea,
   type CreatedAgent,
   type CreatedProject,
+  type ReviewVerdict,
 } from "@/lib/manager-actions";
 
 // Server-action wrappers for the manager UI forms. Thin: validate-via-lib,
@@ -25,6 +31,24 @@ export interface ActionResult<T = undefined> {
   data?: T;
 }
 
+/** Coerce a raw form value into a valid task/project priority (defaults medium). */
+function normalizePriority(raw: FormDataEntryValue | null): "high" | "medium" | "low" {
+  const v = String(raw ?? "");
+  return v === "high" || v === "low" ? v : "medium";
+}
+
+/** Coerce a raw form value into a valid complexity, or null when unset (0018). */
+function normalizeComplexity(raw: FormDataEntryValue | null): "low" | "medium" | "high" | null {
+  const v = String(raw ?? "");
+  return v === "low" || v === "medium" || v === "high" ? v : null;
+}
+
+/** Coerce a raw date form value ("" → null; passes through a YYYY-MM-DD string). */
+function normalizeNeedBy(raw: FormDataEntryValue | null): string | null {
+  const v = String(raw ?? "").trim();
+  return v || null;
+}
+
 export async function createAgentAction(
   _prev: ActionResult<CreatedAgent> | null,
   formData: FormData
@@ -32,12 +56,28 @@ export async function createAgentAction(
   try {
     const name = String(formData.get("name") ?? "");
     const description = String(formData.get("description") ?? "");
-    const agent = await _createAgent(name, description);
-    revalidatePath("/board/agents");
+    const ideaIds = formData.getAll("ideaIds").map(String).filter(Boolean);
+    const agent = await _createAgent(name, description, ideaIds);
     revalidatePath("/board"); // board's assignee list + no-agents state depend on this
     return { ok: true, data: agent };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create agent" };
+  }
+}
+
+export async function updateAgentAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const agentId = String(formData.get("agentId") ?? "");
+    const name = String(formData.get("name") ?? "");
+    const description = String(formData.get("description") ?? "");
+    await _updateAgent(agentId, name, description);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update agent" };
   }
 }
 
@@ -47,7 +87,7 @@ export async function revokeAgentAction(
 ): Promise<ActionResult> {
   try {
     await _revokeAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/board/agents");
+    revalidatePath("/board");
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to revoke" };
@@ -60,7 +100,6 @@ export async function deleteAgentAction(
 ): Promise<ActionResult> {
   try {
     await _deleteAgent(String(formData.get("agentId") ?? ""));
-    revalidatePath("/board/agents");
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -77,7 +116,10 @@ export async function createTaskAction(
     const assignee = String(formData.get("assignedAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
     const projectId = String(formData.get("projectId") ?? "");
-    await _createTask(title, assignee, description, projectId || undefined);
+    const priority = normalizePriority(formData.get("priority"));
+    const ideaId = String(formData.get("ideaId") ?? "");
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    await _createTask(title, assignee, description, projectId || undefined, priority, ideaId || undefined, needBy);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -91,9 +133,14 @@ export async function createProjectAction(
 ): Promise<ActionResult<CreatedProject>> {
   try {
     const title = String(formData.get("title") ?? "");
+    const ideaId = String(formData.get("ideaId") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    const project = await _createProject(title, leadAgentId || undefined, description);
+    const spec = String(formData.get("spec") ?? "");
+    const priority = normalizePriority(formData.get("priority"));
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    const complexity = normalizeComplexity(formData.get("complexity"));
+    const project = await _createProject(title, ideaId, leadAgentId || undefined, description, priority, spec || undefined, needBy, complexity);
     revalidatePath("/board");
     return { ok: true, data: project };
   } catch (e) {
@@ -125,7 +172,10 @@ export async function updateTaskAction(
     const taskId = String(formData.get("taskId") ?? "");
     const title = String(formData.get("title") ?? "");
     const description = String(formData.get("description") ?? "");
-    await _updateTask(taskId, title, description);
+    const priority = normalizePriority(formData.get("priority"));
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    const assignedAgentId = String(formData.get("assignedAgentId") ?? "");
+    await _updateTask(taskId, title, description, priority, needBy, assignedAgentId || undefined);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -142,7 +192,11 @@ export async function updateProjectAction(
     const title = String(formData.get("title") ?? "");
     const leadAgentId = String(formData.get("leadAgentId") ?? "");
     const description = String(formData.get("description") ?? "");
-    await _updateProject(projectId, title, leadAgentId || undefined, description);
+    const spec = String(formData.get("spec") ?? "");
+    const needBy = normalizeNeedBy(formData.get("needBy"));
+    const complexity = normalizeComplexity(formData.get("complexity"));
+    const priority = normalizePriority(formData.get("priority"));
+    await _updateProject(projectId, title, leadAgentId || undefined, description, spec, needBy, complexity, priority);
     revalidatePath("/board");
     return { ok: true };
   } catch (e) {
@@ -165,6 +219,28 @@ export async function deleteTaskAction(
 }
 
 /**
+ * Resolve an in_review task from the board (approval loop AL-E). Form-based:
+ * the verdict comes from the submit button's value; optional selectedOptionId +
+ * note carry the chosen option / manager note.
+ */
+export async function resolveReviewAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const taskId = String(formData.get("taskId") ?? "");
+    const verdict = String(formData.get("verdict") ?? "") as ReviewVerdict;
+    const selectedOptionId = String(formData.get("selectedOptionId") ?? "");
+    const note = String(formData.get("note") ?? "");
+    await _resolveReview(taskId, verdict, selectedOptionId || undefined, note || undefined);
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to resolve review" };
+  }
+}
+
+/**
  * Move a task to a new status (drag-and-drop). Called directly with args (not a
  * form). Returns ActionResult so the board can surface an illegal-move error.
  */
@@ -175,5 +251,44 @@ export async function moveTaskAction(taskId: string, to: string): Promise<Action
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to move task" };
+  }
+}
+
+export async function createIdeaAction(
+  _prev: ActionResult<{ id: string; name: string }> | null,
+  formData: FormData
+): Promise<ActionResult<{ id: string; name: string }>> {
+  try {
+    const idea = await _createIdea(String(formData.get("name") ?? ""));
+    revalidatePath("/board");
+    return { ok: true, data: idea };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to create idea" };
+  }
+}
+
+export async function renameIdeaAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await _renameIdea(String(formData.get("ideaId") ?? ""), String(formData.get("name") ?? ""));
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to rename idea" };
+  }
+}
+
+export async function archiveIdeaAction(
+  _prev: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await _archiveIdea(String(formData.get("ideaId") ?? ""));
+    revalidatePath("/board");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to archive idea" };
   }
 }

@@ -20,12 +20,14 @@
   --blue: #0088cc; /* in_progress accent */
   --magenta: #cc0055; /* destructive / Failed — the only loud color */
 
-  /* Status signal colors (color carries meaning, not decoration). */
-  --st-todo: #6b6157;
-  --st-progress: #0088cc;
-  --st-review: #b8860b;
-  --st-done: #5c7a4a;
-  --st-failed: #cc0055;
+  /* Status signal colors (color carries meaning, not decoration). Values match
+     the Figma "Personal tasks dashboard" reference (same file the landing page
+     was rebuilt from — see DECISIONS 4A / D-LANDING-FIGMA). */
+  --st-todo: #6b6157; /* neutral warm gray — not started */
+  --st-progress: #0088cc; /* blue — running */
+  --st-review: #7c3aed; /* purple — needs review (Figma emphasis, was #b8860b) */
+  --st-done: #059669; /* green — done (Figma, was olive #5c7a4a) */
+  --st-failed: #cc0055; /* magenta — the only loud color */
 }
 
 @theme inline {
@@ -43,8 +45,12 @@
   --color-st-done: var(--st-done);
   --color-st-failed: var(--st-failed);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Brand type (Figma reference, DECISIONS 4A): Russo One display + Space Mono
+     body/mono. Space Mono is the sans too — the operator-console look is mono
+     end to end. Geist stays available as a fallback var if ever needed. */
+  --font-display: var(--font-display), "Russo One", sans-serif;
+  --font-sans: var(--font-space-mono), var(--font-geist-sans), ui-monospace, monospace;
+  --font-mono: var(--font-space-mono), var(--font-geist-mono), ui-monospace, monospace;
 }
 
 html {
@@ -53,19 +59,25 @@ html {
 }
 
 body {
-  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-  /* Faint operator grid on the paper surface. */
+  font-family: var(--font-space-mono), var(--font-geist-mono), ui-monospace, monospace;
+  /* Faint operator grid on the paper surface (warm orange tint, Figma reference). */
   background-color: var(--paper);
   background-image:
-    linear-gradient(to right, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 0, 0, 0.035) 1px, transparent 1px);
-  background-size: 28px 28px;
+    linear-gradient(to right, rgba(200, 80, 0, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(200, 80, 0, 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 /* Monospace utility for machine identifiers (keys, ids, timestamps). */
 .mono {
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-space-mono), var(--font-geist-mono), ui-monospace, monospace;
   font-variant-ligatures: none;
+}
+
+/* Display type — Russo One, for headings and the wordmark. Uppercase + wide
+   tracking is the operator-console signature (applied per-element, not globally). */
+.display {
+  font-family: var(--font-display), "Russo One", sans-serif;
 }
 
 /* Cut-corner operator card (clip-path), reused across cards/panels. */
@@ -83,6 +95,32 @@ body {
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
+  }
+}
+
+/* Skeleton placeholder block for route-loading states (e.g. board/loading.tsx).
+   A muted paper-2 block with a soft shimmer sweep. Static under reduced-motion. */
+@keyframes skeleton-sweep {
+  100% {
+    background-position: 200% 0;
+  }
+}
+.skeleton {
+  background-color: var(--paper-2);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(200, 80, 0, 0.08) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    background-image: none;
+    animation: none;
   }
 }
 
@@ -106,6 +144,51 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .enter-fade {
+    animation: none;
+  }
+}
+
+/* Gentle liveness pulse for the "● LIVE" status dot in the hero board preview.
+   Signals the board is receiving updates without being loud. Reduced-motion off. */
+@keyframes dot-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.45);
+  }
+  50% {
+    opacity: 0.65;
+    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0);
+  }
+}
+.dot-pulse {
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+/* Staggered entrance for the hero copy (eyebrow → h1 → definition → CTA). Each
+   element sets --rise-delay inline. Fade + slight rise, matching enter-fade's
+   easing so the page feels of one piece. */
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-rise {
+  opacity: 0;
+  animation: hero-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot-pulse {
+    animation: none;
+  }
+  .hero-rise {
+    opacity: 1;
     animation: none;
   }
 }

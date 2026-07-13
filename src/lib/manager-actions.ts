@@ -21,7 +21,11 @@ export interface CreatedAgent {
 }
 
 /** Create an agent in the caller's workspace; returns the one-time key. */
-export async function createAgent(name: string, description?: string): Promise<CreatedAgent> {
+export async function createAgent(
+  name: string,
+  description?: string,
+  ideaIds?: string[]
+): Promise<CreatedAgent> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
   if (!name.trim()) throw new Error("Agent name is required");
@@ -41,7 +45,40 @@ export async function createAgent(name: string, description?: string): Promise<C
     .single();
   if (error) throw new Error(`create agent failed: ${error.message}`);
 
+  if (ideaIds && ideaIds.length > 0) {
+    const rows = ideaIds.map((idea_id) => ({ agent_id: data.id, idea_id }));
+    const { error: linkErr } = await supabase.from("agent_ideas").insert(rows);
+    if (linkErr) throw new Error(`link agent to ideas failed: ${linkErr.message}`);
+  }
+
   return { id: data.id, name: data.name, prefix: key.prefix, token: key.token };
+}
+
+/**
+ * Edit an agent's display fields (name + description). Runs under the user's RLS
+ * session, so the update only matches an agent in the caller's workspace (a
+ * foreign id updates nothing). Does not touch the key or revoked state.
+ */
+export async function updateAgent(
+  agentId: string,
+  name: string,
+  description?: string
+): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!agentId) throw new Error("An agent id is required");
+  if (!name.trim()) throw new Error("Agent name is required");
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("agents")
+    .update({ name: name.trim(), description: description?.trim() || null })
+    .eq("id", agentId)
+    .eq("workspace_id", session.workspace.id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(`update agent failed: ${error.message}`);
+  if (!data) throw new Error("Agent not found in your workspace");
 }
 
 /** Revoke an agent's key (sets revoked_at). The agent's next MCP call → 401. */
@@ -105,7 +142,10 @@ export async function createTask(
   title: string,
   assignedAgentId: string,
   description?: string,
-  projectId?: string
+  projectId?: string,
+  priority: "high" | "medium" | "low" = "medium",
+  ideaId?: string,
+  needBy?: string | null
 ): Promise<CreatedTask> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -127,7 +167,8 @@ export async function createTask(
   // Resolve the parent project: explicit, else Miscellaneous (default home, P3).
   let parentId = projectId;
   if (!parentId) {
-    const misc = await getOrCreateMiscProject(supabase, session.workspace.id);
+    if (!ideaId) throw new Error("An idea is required to create a loose task");
+    const misc = await getOrCreateMiscProject(supabase, session.workspace.id, ideaId);
     parentId = misc.id;
   } else {
     const { data: proj } = await supabase
@@ -150,6 +191,8 @@ export async function createTask(
       title: title.trim(),
       description: description?.trim() || null,
       status: INITIAL_STATUS,
+      priority,
+      need_by: needBy || null,
       created_by_user_id: session.user.id,
     })
     .select("id, title, status, assigned_agent_id")
@@ -233,15 +276,20 @@ export async function createChildTask(
 }
 
 /**
- * Edit a task's title + description (board-ux #3). Runs under the user's RLS
- * session, so the update only matches a task in the caller's workspace (a foreign
- * id updates nothing). Only the editable text fields — status/assignee/parent are
- * unchanged. `updated_at` is bumped so the board reorders/refreshes.
+ * Edit a task's editable fields (board-ux #3, #6): title, description, priority,
+ * need-by date, and assignee. Runs under the user's RLS session, so the update
+ * only matches a task in the caller's workspace (a foreign id updates nothing).
+ * Status/parent are unchanged. Reassignment is allowed; the new assignee must be
+ * an active in-workspace agent (mirrors createTask's guard). `updated_at` is
+ * bumped so the board reorders/refreshes.
  */
 export async function updateTask(
   taskId: string,
   title: string,
-  description?: string
+  description?: string,
+  priority?: "high" | "medium" | "low",
+  needBy?: string | null,
+  assignedAgentId?: string
 ): Promise<void> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -249,13 +297,32 @@ export async function updateTask(
   if (!title.trim()) throw new Error("Task title is required");
 
   const supabase = await createServerSupabase();
+
+  // Reassignment (optional): validate the new assignee like createTask does. A
+  // task always keeps an assignee, so an empty value here is a no-op (unchanged).
+  if (assignedAgentId) {
+    const { data: agent } = await supabase
+      .from("agents")
+      .select("id, revoked_at")
+      .eq("id", assignedAgentId)
+      .eq("workspace_id", session.workspace.id)
+      .maybeSingle();
+    if (!agent) throw new Error("Assignee agent not found in your workspace");
+    if (agent.revoked_at) throw new Error("Cannot assign work to a revoked agent");
+  }
+
+  const patch: Record<string, unknown> = {
+    title: title.trim(),
+    description: description?.trim() || null,
+    need_by: needBy || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (priority) patch.priority = priority;
+  if (assignedAgentId) patch.assigned_agent_id = assignedAgentId;
+
   const { data, error } = await supabase
     .from("tasks")
-    .update({
-      title: title.trim(),
-      description: description?.trim() || null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", taskId)
     .eq("workspace_id", session.workspace.id)
     .select("id")
@@ -309,6 +376,49 @@ export async function moveTask(taskId: string, to: string): Promise<void> {
   if (evErr) throw new Error(`move event failed: ${evErr.message}`);
 }
 
+export type ReviewVerdict = "approve_continue" | "approve_close" | "reject";
+
+/**
+ * Resolve an in_review task from the manager UI (approval loop AL-D).
+ * approve_continue → in_progress (agent resumes), approve_close → done (human
+ * sign-off / PR merged, AL4b), reject → failed. Runs under the user's RLS session
+ * via the resolve_review RPC (atomic status + verdict + event), so the RPC only
+ * matches a task in the caller's workspace.
+ */
+export async function resolveReview(
+  taskId: string,
+  verdict: ReviewVerdict,
+  selectedOptionId?: string,
+  note?: string
+): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!taskId) throw new Error("A task id is required");
+
+  const to =
+    verdict === "approve_continue" ? "in_progress" :
+    verdict === "approve_close" ? "done" : "failed";
+  const dbVerdict = verdict === "reject" ? "rejected" : "approved";
+
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase.rpc("resolve_review", {
+    p_workspace_id: session.workspace.id,
+    p_task_id: taskId,
+    p_to: to,
+    p_verdict: dbVerdict,
+    p_selected: selectedOptionId || null,
+    p_note: note?.trim() || null,
+    p_actor_id: session.user.id,
+  });
+  if (error) throw new Error(`resolve review failed: ${error.message}`);
+  const res = data as { ok: boolean; reason?: string };
+  if (!res.ok) {
+    throw new Error(
+      res.reason === "not_in_review" ? "Task is not awaiting review" : "Review not found in your workspace"
+    );
+  }
+}
+
 export interface CreatedProject {
   id: string;
   title: string;
@@ -322,14 +432,26 @@ export interface CreatedProject {
  */
 export async function createProject(
   title: string,
+  ideaId: string,
   leadAgentId?: string,
-  description?: string
+  description?: string,
+  priority: "high" | "medium" | "low" = "medium",
+  spec?: string,
+  needBy?: string | null,
+  complexity?: "low" | "medium" | "high" | null
 ): Promise<CreatedProject> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
   if (!title.trim()) throw new Error("Project title is required");
+  if (!ideaId) throw new Error("An idea is required");
 
   const supabase = await createServerSupabase();
+
+  // The idea must exist, be active, and belong to this workspace.
+  const { data: idea } = await supabase
+    .from("ideas").select("id").eq("id", ideaId)
+    .eq("workspace_id", session.workspace.id).is("archived_at", null).maybeSingle();
+  if (!idea) throw new Error("Idea not found in your workspace");
 
   if (leadAgentId) {
     const { data: agent } = await supabase
@@ -346,11 +468,16 @@ export async function createProject(
     .from("tasks")
     .insert({
       workspace_id: session.workspace.id,
+      idea_id: ideaId,
       kind: "project",
       assigned_agent_id: leadAgentId || null,
       title: title.trim(),
       description: description?.trim() || null,
+      spec: spec?.trim() || null,
       status: INITIAL_STATUS,
+      priority,
+      need_by: needBy || null,
+      complexity: complexity || null,
       created_by_user_id: session.user.id,
     })
     .select("id, title, status, assigned_agent_id")
@@ -382,7 +509,11 @@ export async function updateProject(
   projectId: string,
   title: string,
   leadAgentId?: string,
-  description?: string
+  description?: string,
+  spec?: string,
+  needBy?: string | null,
+  complexity?: "low" | "medium" | "high" | null,
+  priority?: "high" | "medium" | "low"
 ): Promise<void> {
   const session = await getSession();
   if (!session) throw new Error("unauthenticated");
@@ -402,14 +533,20 @@ export async function updateProject(
     if (agent.revoked_at) throw new Error("Cannot assign a project to a revoked agent");
   }
 
+  const patch: Record<string, unknown> = {
+    title: title.trim(),
+    description: description?.trim() || null,
+    spec: spec?.trim() || null,
+    assigned_agent_id: leadAgentId || null,
+    need_by: needBy || null,
+    complexity: complexity || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (priority) patch.priority = priority;
+
   const { data, error } = await supabase
     .from("tasks")
-    .update({
-      title: title.trim(),
-      description: description?.trim() || null,
-      assigned_agent_id: leadAgentId || null,
-      updated_at: new Date().toISOString(),
-    })
+    .update(patch)
     .eq("id", projectId)
     .eq("workspace_id", session.workspace.id)
     .eq("kind", "project")
@@ -450,4 +587,53 @@ export async function deleteTask(taskId: string): Promise<void> {
     .eq("id", taskId)
     .eq("workspace_id", session.workspace.id);
   if (error) throw new Error(`delete failed: ${error.message}`);
+}
+
+/** Create an idea in the caller's workspace. */
+export async function createIdea(name: string): Promise<{ id: string; name: string }> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!name.trim()) throw new Error("Idea name is required");
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("ideas")
+    .insert({ workspace_id: session.workspace.id, name: name.trim() })
+    .select("id, name")
+    .single();
+  if (error) throw new Error(`create idea failed: ${error.message}`);
+  return data;
+}
+
+/** Rename an idea (RLS-scoped to the caller's workspace). */
+export async function renameIdea(ideaId: string, name: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  if (!name.trim()) throw new Error("Idea name is required");
+  const supabase = await createServerSupabase();
+  const { data, error } = await supabase
+    .from("ideas").update({ name: name.trim() })
+    .eq("id", ideaId).eq("workspace_id", session.workspace.id)
+    .select("id").maybeSingle();
+  if (error) throw new Error(`rename idea failed: ${error.message}`);
+  if (!data) throw new Error("Idea not found in your workspace");
+}
+
+/**
+ * Archive an idea (soft — hides from the switcher, keeps data). Refuses if it's
+ * the last active idea (there must always be a home for projects).
+ */
+export async function archiveIdea(ideaId: string): Promise<void> {
+  const session = await getSession();
+  if (!session) throw new Error("unauthenticated");
+  const supabase = await createServerSupabase();
+  const { count } = await supabase
+    .from("ideas").select("id", { count: "exact", head: true })
+    .eq("workspace_id", session.workspace.id).is("archived_at", null);
+  if ((count ?? 0) <= 1) throw new Error("Can't archive your only idea");
+  const { data, error } = await supabase
+    .from("ideas").update({ archived_at: new Date().toISOString() })
+    .eq("id", ideaId).eq("workspace_id", session.workspace.id)
+    .select("id").maybeSingle();
+  if (error) throw new Error(`archive idea failed: ${error.message}`);
+  if (!data) throw new Error("Idea not found in your workspace");
 }

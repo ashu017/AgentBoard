@@ -4,30 +4,25 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/app/_components/Modal";
 import { devLogin, signInWithGitHub } from "./actions";
 
-// Sign-in presented as a dismissable modal floating over a blurred snapshot of
-// the operator console (matches the Figma reference's modal pattern). The
-// landing page (/) is the natural surface behind it, so closing the modal —
-// via the ✕, a backdrop click, or Esc — returns the visitor there rather than
-// trapping them on a dead-end screen.
+// Sign-in presented as a dismissable modal in the shared "figma" variant — the
+// same operator-console dialog look (warm tan-blur backdrop, near-white panel,
+// orange border + corner notches, display-font title) used by every board
+// modal, so sign-in reads as part of the same system. The landing page (/) is
+// the natural surface behind it, so closing the modal — via the ✕, a backdrop
+// click, or Esc — returns the visitor there rather than trapping them on a
+// dead-end screen.
 export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; oauthError?: boolean }) {
   const router = useRouter();
   const dismiss = () => router.push("/");
 
   return (
-    <>
-      {/* Blurred operator-console backdrop so the modal reads as floating over
-          the page, not as a standalone screen. */}
-      <div aria-hidden="true" className="pointer-events-none flex min-h-full items-center justify-center blur-sm">
-        <div className="mono text-xs uppercase tracking-[0.3em] text-ink-soft/50">SYS:: AGENTBOARD</div>
-      </div>
-
-      <Modal
-        open
-        onClose={dismiss} // dismissing returns to the landing page
-        title="Sign in"
-        systemTag="SYS:: AGENTBOARD"
-        blurBackdrop
-      >
+    <Modal
+      open
+      onClose={dismiss} // dismissing returns to the landing page
+      title="Sign in"
+      systemTag="SYS:: AGENTBOARD"
+      variant="figma"
+    >
         <p className="text-sm text-ink-soft">
           The human-in-the-loop control plane for a fleet of AI agents.
         </p>
@@ -64,8 +59,7 @@ export function LoginClient({ devEnabled, oauthError }: { devEnabled: boolean; o
             DEV_LOGIN active — local only. GitHub OAuth replaces this in production.
           </p>
         )}
-      </Modal>
-    </>
+    </Modal>
   );
 }
 

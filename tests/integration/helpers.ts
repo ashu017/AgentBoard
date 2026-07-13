@@ -69,6 +69,8 @@ export interface SeededTenant {
   userId: string;
   workspaceId: string;
   agentId: string;
+  /** default idea for this workspace; project rows must reference it (tasks_project_has_idea). */
+  ideaId: string;
   /** raw token + hash for this tenant's agent. */
   token: string;
   hash: string;
@@ -102,6 +104,13 @@ export async function seedTenant(
     .single();
   if (wsErr) throw wsErr;
 
+  const { data: idea, error: ideaErr } = await db
+    .from("ideas")
+    .insert({ workspace_id: ws.id, name: "Test Idea" })
+    .select("id")
+    .single();
+  if (ideaErr) throw ideaErr;
+
   const { data: agent, error: agentErr } = await db
     .from("agents")
     .insert({
@@ -114,7 +123,7 @@ export async function seedTenant(
     .single();
   if (agentErr) throw agentErr;
 
-  return { userId, workspaceId: ws.id, agentId: agent.id, token: key.token, hash: key.hash };
+  return { userId, workspaceId: ws.id, agentId: agent.id, ideaId: idea.id, token: key.token, hash: key.hash };
 }
 
 /**
@@ -129,17 +138,20 @@ export async function seedTenant(
  */
 export async function seedTask(
   t: SeededTenant,
-  fields: { title: string; status?: string; description?: string; kind?: string; parentId?: string | null }
+  fields: { title: string; status?: string; description?: string; spec?: string | null; kind?: string; parentId?: string | null }
 ): Promise<string> {
+  const kind = fields.kind ?? "project";
   const { data, error } = await admin()
     .from("tasks")
     .insert({
       workspace_id: t.workspaceId,
       assigned_agent_id: t.agentId,
-      kind: fields.kind ?? "project",
+      kind,
       parent_id: fields.parentId ?? null,
+      idea_id: kind === "project" ? t.ideaId : null,
       title: fields.title,
       description: fields.description ?? null,
+      spec: fields.spec ?? null,
       status: fields.status ?? "todo",
       created_by_user_id: t.userId,
     })
