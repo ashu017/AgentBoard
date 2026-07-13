@@ -1081,7 +1081,37 @@ NOT AgentBoard product agents — though the dogfooding dream is to eventually r
   boundary, advisor scans.
 - **Social / launch agent** — drafts posts for Reddit (subreddits), Hacker News, Product
   Hunt, LinkedIn. **Draft-only**; actual posting needs API creds + per-post human approval
-  (outward-facing).
+  (outward-facing). **Revised 2026-07-05 (P0, Reddit slice) — stays draft-only:** building
+  the Reddit slice as `.claude/agents/reddit-marketer.md` + a read-only `scripts/reddit/
+  fetch-top.mjs`. It researches curated subreddits (top-100/month via **public JSON**,
+  `www.reddit.com/r/<sub>/top.json`, descriptive User-Agent, no auth) and drafts tailored,
+  value-first posts; **a human reviews and posts them by hand.** *A mid-session draft of the
+  spec briefly proposed an OAuth2 script-app that auto-posts past a `--confirm` gate; that
+  was **removed** after reading Reddit's **Responsible Builder Policy** (2026-07-05):
+  automated posting of "identical or substantially similar content across subreddits" is
+  explicitly prohibited spam, app accounts must be single-purpose, and API app creation is
+  gated behind approval/registration (developers.reddit.com/app-registration) with
+  non-commercial builders steered to Devvit. So the automation-of-posting itself is the
+  liability — NEXT-3's original "draft-only" stance holds; only the human posts. This also
+  sidesteps the app-creation approval gate the user hit.* HN/PH/LinkedIn also stay
+  draft-only. **Devvit evaluated & set aside 2026-07-05:** a Devvit Web app
+  (`~/Desktop/reddit/agentboard`) builds interactive posts that run on Reddit's servers and
+  can only post into subreddits that *installed the app* (a moderator action), so it can't
+  post promo into third-party communities. It remains the *sanctioned* path for a separate
+  future "interactive AgentBoard presence on our own subreddit" initiative — not this agent.
+  **Automation added 2026-07-05 (P0.5), still draft-only — revised to a drip:** a **local
+  `launchd` job ticks every 5 min** (`StartInterval` 300s) and processes **exactly one
+  subreddit per tick**, advancing a persisted **watermark** (`drafts/reddit/.watermark.json`,
+  `{week, index}`). Each tick drafts via **Claude Code headless (`claude -p`)** against the
+  `reddit-marketer` subagent and delivers **that one sub's** draft as a single Telegram
+  message (`send-telegram.mjs`). The watermark is ISO-week-scoped: after the last sub the job
+  **idles until a new week resets it to sub #1** → net **one full pass over the seed list per
+  week, drip-fed 5 min apart** (chosen over a single Mon-09:00 batch: gentler on Reddit, one
+  draft to review at a time). Watermark advances only after a successful draft+send, so a
+  failed tick retries the same sub. Still reads Reddit + writes Telegram only — no Reddit
+  posting code exists. Telegram creds (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) live in
+  gitignored `.env.local`. Spec:
+  `docs/superpowers/specs/2026-07-05-reddit-marketer-agent-design.md`.
 - **Design agent** (low priority) — Figma UI designs. Partly blocked: Figma MCP is on the
   Amazon account (IP concern) until a personal Figma is sorted.
 - **Docs / decision-log agent** — keeps DECISIONS/design/CLAUDE/HANDOFF consistent + release notes.

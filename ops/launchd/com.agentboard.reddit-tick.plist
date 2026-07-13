@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Reddit draft → Telegram tick. Runs every 5 minutes; handles ONE subreddit per
+  tick (watermark-driven) and idles once the week's pass is done.
+  SETUP:
+    1. Replace __REPO__ with the absolute path to this repo, and __NODE_BIN_DIR__
+       with the dir containing your `node` + `claude` (run: dirname "$(which node)").
+    2. Copy to ~/Library/LaunchAgents/com.agentboard.reddit-tick.plist
+    3. Load it:   launchctl load ~/Library/LaunchAgents/com.agentboard.reddit-tick.plist
+       Unload:    launchctl unload ~/Library/LaunchAgents/com.agentboard.reddit-tick.plist
+       Run now:   launchctl start com.agentboard.reddit-tick
+  launchd (not cron) runs a missed tick on the next wake if the Mac was asleep.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agentboard.reddit-tick</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/scripts/reddit/tick.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__NODE_BIN_DIR__:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>StandardOutPath</key>
+  <string>__REPO__/drafts/reddit/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/drafts/reddit/launchd.err.log</string>
+</dict>
+</plist>

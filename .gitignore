@@ -31,6 +31,9 @@ tsconfig.tsbuildinfo
 *.tsbuildinfo
 .gstack/
 
+# Reddit marketer agent — generated drafts (post by hand; never committed)
+drafts/
+
 # Local Claude Code worktrees + settings (not part of the app; agents/skills ARE tracked)
 .claude/worktrees/
 .claude/settings.local.json
